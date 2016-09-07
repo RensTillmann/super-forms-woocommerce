@@ -11,7 +11,7 @@
  * Plugin Name: Super Forms WooCommerce
  * Plugin URI:  http://codecanyon.net/item/super-forms-drag-drop-form-builder/13979866
  * Description: Checkout with WooCommerce after form submission
- * Version:     1.0.1
+ * Version:     1.0.0
  * Author:      feeling4design
  * Author URI:  http://codecanyon.net/user/feeling4design
 */
@@ -36,7 +36,7 @@ if(!class_exists('SUPER_WooCommerce')) :
          *
          *	@since		1.0.0
         */
-        public $version = '1.0.1';
+        public $version = '1.0.0';
 
         
         /**
@@ -73,7 +73,7 @@ if(!class_exists('SUPER_WooCommerce')) :
         */
         public function __construct(){
             $this->init_hooks();
-            do_action('SUPER_WooCommerce_loaded');
+            do_action('super_woocommerce_loaded');
         }
 
         
@@ -133,7 +133,6 @@ if(!class_exists('SUPER_WooCommerce')) :
                 
                 // Filters since 1.0.0
                 add_filter( 'super_settings_after_smtp_server_filter', array( $this, 'add_settings' ), 10, 2 );
-                add_filter( 'super_shortcodes_after_form_elements_filter', array( $this, 'add_text_field_settings' ), 10, 2 );
 
                 // Actions since 1.0.0
 
@@ -148,47 +147,6 @@ if(!class_exists('SUPER_WooCommerce')) :
 
             }
             
-        }
-
-        /**
-         * Hook into settings and add Text field settings
-         *
-         *  @since      1.0.0
-        */
-        public static function add_text_field_settings( $array, $attributes ) {
-            
-            // Make sure that older Super Forms versions also have the 
-            // filter attribute set to true for the name setting field for text field element:
-            $array['form_elements']['shortcodes']['text']['atts']['general']['fields']['name']['filter'] = true;
-
-            // Now add the taxonomy settings field
-            $fields_array = $array['form_elements']['shortcodes']['text']['atts']['general']['fields'];
-            $res = array_slice($fields_array, 0, 1, true);
-            $taxonomy['tag_taxonomy'] = array(
-                'name' => __( 'The tag taxonomy name (e.g: post_tag or product_tag)', 'super' ),
-                'desc' => __( 'Required to connect the post to tags (if found)', 'super' ),
-                'default'=> ( !isset( $attributes['tag_taxonomy'] ) ? '' : $attributes['tag_taxonomy'] ),
-                'filter' => true,
-                'parent' => 'name',
-                'filter_value' => 'tags_input',
-                'required' => true
-            );
-            $taxonomy['cat_taxonomy'] = array(
-                'name' => __( 'The cat taxonomy name (e.g: post_tag or product_tag)', 'super' ),
-                'desc' => __( 'Required to connect the post to categories (if found)', 'super' ),
-                'default'=> ( !isset( $attributes['cat_taxonomy'] ) ? '' : $attributes['cat_taxonomy'] ),
-                'filter' => true,
-                'parent' => 'name',
-                'filter_value' => 'tags_input',
-                'required' => true
-            );
-            $res = $res + $taxonomy + array_slice($fields_array, 1, count($fields_array) - 1, true);
-
-
-
-            $array['form_elements']['shortcodes']['text']['atts']['general']['fields'] = $res;
-            return $array;
-
         }
 
 
@@ -716,21 +674,64 @@ if(!class_exists('SUPER_WooCommerce')) :
          *  @since      1.0.0
         */
         public static function add_settings( $array, $settings ) {
-            global $wp_roles;
-            $all_roles = $wp_roles->roles;
-            $editable_roles = apply_filters( 'editable_roles', $all_roles );
-            $roles = array(
-                '' => __( 'All user roles', 'super' )
+            $array['woocommerce_checkout'] = array(        
+                'name' => __( 'WooCommerce Checkout', 'super' ),
+                'label' => __( 'WooCommerce Checkout', 'super' ),
+                'fields' => array(
+                    'woocommerce_checkout' => array(
+                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_checkout', $settings['settings'], '' ),
+                        'type' => 'checkbox',
+                        'filter'=>true,
+                        'values' => array(
+                            'true' => __( 'Enable WooCommerce Checkout', 'super-forms' ),
+                        ),
+                    ),
+                )
             );
-            foreach( $editable_roles as $k => $v ) {
-                $roles[$k] = $v['name'];
+            if ( class_exists( 'SUPER_Frontend_Posting' ) ) {
+                $array['woocommerce_checkout']['fields']['woocommerce_post_status'] = array(
+                    'name' => __( 'Post status after payment complete', 'super' ),
+                    'desc' => __( 'Only used for Front-end posting (publish, future, draft, pending, private, trash, auto-draft)?', 'super' ),
+                    'default' => SUPER_Settings::get_value( 0, 'woocommerce_post_status', $settings['settings'], 'publish' ),
+                    'type' => 'select',
+                    'values' => array(
+                        'publish' => __( 'Publish (default)', 'super' ),
+                        'future' => __( 'Future', 'super' ),
+                        'draft' => __( 'Draft', 'super' ),
+                        'pending' => __( 'Pending', 'super' ),
+                        'private' => __( 'Private', 'super' ),
+                        'trash' => __( 'Trash', 'super' ),
+                        'auto-draft' => __( 'Auto-Draft', 'super' ),
+                    ),
+                    'filter' => true,
+                    'parent' => 'woocommerce_checkout',
+                    'filter_value' => 'true',
+                );
             }
-            $reg_roles = $roles;
-            unset($reg_roles['']);
+            return $array;
+
+            /*
             $array['woocommerce'] = array(        
                 'name' => __( 'WooCommerce', 'super' ),
                 'label' => __( 'WooCommerce Settings', 'super' ),
                 'fields' => array(
+                    'woocommerce_post_status' => array(
+                        'name' => __( 'Post status after payment complete', 'super' ),
+                        'desc' => __( 'Select what the status should be (publish, future, draft, pending, private, trash, auto-draft)?', 'super' ),
+                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_post_status', $settings['settings'], 'publish' ),
+                        'type' => 'select',
+                        'values' => array(
+                            'publish' => __( 'Publish (default)', 'super' ),
+                            'future' => __( 'Future', 'super' ),
+                            'draft' => __( 'Draft', 'super' ),
+                            'pending' => __( 'Pending', 'super' ),
+                            'private' => __( 'Private', 'super' ),
+                            'trash' => __( 'Trash', 'super' ),
+                            'auto-draft' => __( 'Auto-Draft', 'super' ),
+                        ),
+                    ),
+
+                    /*
                     'woocommerce_action' => array(
                         'name' => __( 'Actions', 'super' ),
                         'desc' => __( 'Select what this form should do (register or login)?', 'super' ),
@@ -1005,7 +1006,9 @@ if(!class_exists('SUPER_WooCommerce')) :
                     )
                 )
             );
+
             return $array;
+            */
         }
 
 
