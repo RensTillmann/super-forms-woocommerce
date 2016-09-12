@@ -167,16 +167,11 @@ if(!class_exists('SUPER_WooCommerce')) :
                     $data = $atts['post']['data'];
                 }
             }
+            if($settings['woocommerce_checkout']=='true') {
 
-            if( !isset( $settings['woocommerce_action'] ) ) return true;
-            if( $settings['woocommerce_action']=='none' ) return true;
-
-            // Create a new post
-            if( $settings['woocommerce_action']=='create_post' ) {
-                
-                // post_title and post_content are required so let's check if these are both set
-                if( !isset( $data['post_title'] ) ) {
-                    $msg = __( 'We couldn\'t find the <strong>post_title</strong> field which is required in order to create a new post. Please <a href="' . get_admin_url() . 'admin.php?page=super_create_form&id=' . absint( $atts['post']['form_id'] ) . '">edit</a> your form and try again', 'super' );
+                // No products defined to add to cart!
+                if( (!isset($settings['woocommerce_checkout_products'])) || (empty($settings['woocommerce_checkout_products'])) ) {
+                    $msg = __( 'You haven\'t defined what products should be added to the cart. Please <a href="' . get_admin_url() . 'admin.php?page=super_create_form&id=' . absint( $atts['post']['form_id'] ) . '">edit</a> your form settings and try again', 'super' );
                     SUPER_Common::output_error(
                         $error = true,
                         $msg = $msg,
@@ -184,487 +179,94 @@ if(!class_exists('SUPER_WooCommerce')) :
                     );
                 }
 
-                // Lets check if post type exists
-                if( $settings['woocommerce_post_type']=='' ) $settings['woocommerce_post_type'] = 'page';
-                if ( !post_type_exists( $settings['woocommerce_post_type'] ) ) {
-                    $msg = sprintf( __( 'The post type <strong>%s</strong> doesn\'t seem to exist. Please <a href="' . get_admin_url() . 'admin.php?page=super_create_form&id=' . absint( $atts['post']['form_id'] ) . '">edit</a> your form and try again ', 'super' ), $settings['woocommerce_post_type'] );
-                    SUPER_Common::output_error(
-                        $error = true,
-                        $msg = $msg,
-                        $redirect = null
+                $products = array();
+                $woocommerce_checkout_products = explode( "\n", $settings['woocommerce_checkout_products'] );  
+                foreach( $woocommerce_checkout_products as $k => $v ) {
+                    $product =  explode( "|", $v );
+                    $product_id = '';
+                    $product_quantity = '';
+                    $product_variation_id = '';
+                    $product_price = '';
+                    if( isset( $product[2] ) ) $product_id = SUPER_Common::email_tags( $product[0], $data, $settings );
+                    if( isset( $product[2] ) ) $product_quantity = SUPER_Common::email_tags( $product[1], $data, $settings );
+                    if( isset( $product[2] ) ) $product_variation_id = SUPER_Common::email_tags( $product[2], $data, $settings );
+                    if( isset( $product[2] ) ) $product_price = SUPER_Common::email_tags( $product[3], $data, $settings );
+                    $products[] = array(
+                        'id' => absint($product_id),
+                        'quantity' => $product_quantity,
+                        'variation_id' => $product_variation_id,
+                        'price' => $product_price,
                     );
                 }
 
-                $postarr = array();
-                
-                // Default values from the form settings
-                $postarr['post_type'] = sanitize_text_field( $settings['woocommerce_post_type'] );
-                $postarr['post_status'] = sanitize_text_field( $settings['woocommerce_status'] );
-                $postarr['post_parent'] = absint( $settings['woocommerce_post_parent'] );
-                $postarr['comment_status'] = sanitize_text_field( $settings['woocommerce_comment_status'] );
-                $postarr['ping_status'] = sanitize_text_field( $settings['woocommerce_ping_status'] );
-                $postarr['menu_order'] = absint( $settings['woocommerce_menu_order'] );
-                $postarr['post_password'] = $settings['woocommerce_post_password'];
-                if($settings['woocommerce_author']!='') {
-                    $postarr['post_author'] = absint( $settings['woocommerce_author'] );
-                }else{
-                    $user_id = get_current_user_id();
-                    if( $user_id!=0 ) {
-                        $postarr['post_author'] = $user_id;
-                    }
-                }
-                $post_format = sanitize_text_field( $settings['woocommerce_post_format'] );
-                $tax_input = sanitize_text_field( $settings['woocommerce_tax_input'] );
-                $tags_input = sanitize_text_field( $settings['woocommerce_tags_input'] );
-                $tag_taxonomy = sanitize_text_field( $settings['woocommerce_post_tag_taxonomy'] );
-                $cat_taxonomy = sanitize_text_field( $settings['woocommerce_post_cat_taxonomy'] );
+                global $woocommerce;
 
-                // Override default values for form field values
-                $postarr['post_title'] = $data['post_title']['value'];
-                if( isset( $data['post_content'] ) ) $postarr['post_content'] = $data['post_content']['value'];
-                if( isset( $data['post_excerpt'] ) ) $postarr['post_excerpt'] = $data['post_excerpt']['value'];
-                if( isset( $data['post_type'] ) ) $postarr['post_type'] = sanitize_text_field( $data['post_type']['value'] );
-                if( isset( $data['post_format'] ) ) $post_format = sanitize_text_field( $data['post_format']['value'] );
-                if( isset( $data['tax_input'] ) ) $tax_input = sanitize_text_field( $data['tax_input']['value'] );
-                if( isset( $data['tags_input'] ) ) $tags_input = sanitize_text_field( $data['tags_input']['value'] );
-                if( isset( $data['tag_taxonomy'] ) ) $tag_taxonomy = sanitize_text_field( $data['tag_taxonomy']['value'] );
-                if( isset( $data['cat_taxonomy'] ) ) $cat_taxonomy = sanitize_text_field( $data['cat_taxonomy']['value'] );
-                if( isset( $data['post_status'] ) ) $postarr['post_status'] = sanitize_text_field( $data['post_status']['value'] );
-                if( isset( $data['post_parent'] ) ) $postarr['post_parent'] = absint( $data['post_parent']['value'] );
-                if( isset( $data['comment_status'] ) ) $postarr['comment_status'] = sanitize_text_field( $data['comment_status']['value'] );
-                if( isset( $data['ping_status'] ) ) $postarr['ping_status'] = sanitize_text_field( $data['ping_status']['value'] );
-                if( isset( $data['post_password'] ) ) $postarr['post_password'] = $data['post_password']['value'];
-                if( isset( $data['menu_order'] ) ) $postarr['menu_order'] = $data['menu_order']['value'];
-                if( isset( $data['post_author'] ) ) $postarr['post_author'] = absint( $data['post_author']['value'] );
-                if( (isset( $data['post_date'] )) && (isset( $data['post_time'] )) ) {
-                    $postarr['post_time'] = date( 'H:i:s', strtotime($data['post_time']['value'] ) ); // Must be formatted as '18:57:33';
-                    $postarr['post_date'] = date( 'Y-m-d', strtotime($data['post_date']['value'] ) ); // Must be formatted as '2010-02-23';
-                    $postarr['post_date'] = $postarr['post_date'] . ' ' . $postarr['post_time']; // Must be formatted as '2010-02-23 18:57:33';
-                }else{
-                    if( isset( $data['post_date'] ) ) {
-                        $postarr['post_date'] = date( 'Y-m-d H:i:s', strtotime($data['post_date']['value'] ) ); // Must be formatted as '2010-02-23 18:57:33';
-                    }
-                }
-                if( ($postarr['comment_status']=='open') || ($postarr['comment_status']=='1') || ($postarr['comment_status']=='yes') || ($postarr['comment_status']=='true') ) {
-                    $postarr['comment_status'] = 'open';
-                }elseif( ($postarr['comment_status']=='closed') || ($postarr['comment_status']=='0') || ($postarr['comment_status']=='no') || ($postarr['comment_status']=='false') ) {
-                    $postarr['comment_status'] = 'closed';
-                }else{
-                    unset($postarr['comment_status']);
+                // Empty the cart
+                if( (isset($settings['woocommerce_checkout_empty_cart'])) && ($settings['woocommerce_checkout_empty_cart']=='true') ) {
+                    $woocommerce->cart->empty_cart();
                 }
 
-                // Lets check if tax_input field exists
-                // If so, let's check if the post_taxonomy exists, because this is required in order to connect the categories accordingly to the post.
-                if( $tax_input!='' ) {
-                    if( $cat_taxonomy=='' ) {
-                        $msg = __( 'You have a field called <strong>tax_input</strong> but you haven\'t set a valid taxonomy name. Please <a href="' . get_admin_url() . 'admin.php?page=super_create_form&id=' . absint( $atts['post']['form_id'] ) . '">edit</a> your form and try again ', 'super' );
+                // Remove any coupons.
+                if( (isset($settings['woocommerce_checkout_remove_coupons'])) && ($settings['woocommerce_checkout_remove_coupons']=='true') ) {
+                    $woocommerce->cart->remove_coupons();
+                }
+
+                // Add discount
+                if( (isset($settings['woocommerce_checkout_coupon'])) && ($settings['woocommerce_checkout_coupon']!='') ) {
+                    $woocommerce->cart->add_discount($settings['woocommerce_checkout_coupon']);
+                }
+
+                global $wpdb;
+
+                // Now add the product(s) to the cart
+                foreach( $products as $k => $v ) {
+
+                    // $product_id
+                    // ( int ) optional – contains the id of the product to add to the cart
+
+                    // $quantity
+                    // ( int ) optional default: 1 – contains the quantity of the item to add
+
+                    // $variation_id
+                    // ( int ) optional –
+
+                    // $variation
+                    // ( array ) optional – attribute values
+
+                    // $cart_item_data
+                    // ( array ) optional – extra cart item data we want to pass into the item
+
+                    $product = wc_get_product( $v['id'] );
+                    $attributes = $product->get_variation_attributes();
+                    $new_attributes = array();
+                    foreach( $attributes as $ak => $av ) {
+                        $new_attributes[$ak] = get_post_meta( $v['variation_id'], 'attribute_' . $ak, true );
+                    }
+                    $woocommerce->cart->add_to_cart( $v['id'], $v['quantity'], $v['variation_id'], $new_attributes );
+
+                }
+
+                // Redirect to cart / checkout page
+                if( isset($settings['woocommerce_redirect']) ) {
+                    $redirect = null;
+                    if( $settings['woocommerce_redirect']=='checkout' ) {
+                        $redirect = $woocommerce->cart->get_checkout_url();
+                    }
+                    if( $settings['woocommerce_redirect']=='cart' ) {
+                        $redirect = $woocommerce->cart->get_cart_url();
+                    }
+                    if( $redirect!=null ) {
                         SUPER_Common::output_error(
-                            $error = true,
-                            $msg = $msg,
-                            $redirect = null
+                            $error = false,
+                            $msg = '',
+                            $redirect = $redirect
                         );
-                    }else{
-                        if ( !taxonomy_exists( $cat_taxonomy ) ) {
-                            $msg = sprintf( __( 'The taxonomy <strong>%s</strong> doesn\'t seem to exist. Please <a href="' . get_admin_url() . 'admin.php?page=super_create_form&id=' . absint( $atts['post']['form_id'] ) . '">edit</a> your form and try again ', 'super' ), $settings['woocommerce_post_cat_taxonomy'] );
-                            SUPER_Common::output_error(
-                                $error = true,
-                                $msg = $msg,
-                                $redirect = null
-                            );
-                        }
                     }
                 }
+                exit;
 
-                // Lets check if tags_input field exists
-                // If so, let's check if the tag_taxonomy exists, because this is required in order to connect the categories accordingly to the post.
-                if( $tags_input!='' ) {
-                    if( $tag_taxonomy=='' ) {
-                        $msg = __( 'You have a field called <strong>tags_input</strong> but you haven\'t set a valid taxonomy name. Please <a href="' . get_admin_url() . 'admin.php?page=super_create_form&id=' . absint( $atts['post']['form_id'] ) . '">edit</a> your form and try again ', 'super' );
-                        SUPER_Common::output_error(
-                            $error = true,
-                            $msg = $msg,
-                            $redirect = null
-                        );
-                    }else{
-                        if ( !taxonomy_exists( $tag_taxonomy ) ) {
-                            $msg = sprintf( __( 'The taxonomy <strong>%s</strong> doesn\'t seem to exist. Please <a href="' . get_admin_url() . 'admin.php?page=super_create_form&id=' . absint( $atts['post']['form_id'] ) . '">edit</a> your form and try again ', 'super' ), $tag_taxonomy );
-                            SUPER_Common::output_error(
-                                $error = true,
-                                $msg = $msg,
-                                $redirect = null
-                            );
-                        }
-                    }
-                }
-
-                // @since 1.0.1
-                $postarr = apply_filters( 'super_woocommerce_before_insert_post_filter', $postarr );
-
-                // Get the post ID or return the error(s)
-                $result = wp_insert_post( $postarr, true );
-                if( isset( $result->errors ) ) {
-                    $msg = '';
-                    foreach( $result->errors as $v ) {
-                        $msg .= '- ' . $v[0] . '<br />';
-                    }
-                    SUPER_Common::output_error(
-                        $error = true,
-                        $msg = $msg,
-                        $redirect = null
-                    );
-                }else{
-
-                    $post_id = $result;
-
-                    // Check if we need to make this post sticky
-                    if( isset( $data['stick_post'] ) ) {
-                        $sticky = sanitize_text_field( $data['stick_post']['value'] );
-                        if( ($sticky=='1') || ($sticky=='true') || ($sticky=='yes') ) {
-                            stick_post($post_id);
-                        }
-                    }
-
-                    // BuddyPress functions
-                    // Make Topic sticky
-                    if( function_exists( 'bbp_stick_topic' ) ) {
-                        if( isset( $data['_bbp_topic_type'] ) ) {
-                            $stickies = array( $post_id );
-                            $stickies = array_values( $stickies );
-                            if( $data['_bbp_topic_type']['value']=='super' ) {
-                                update_option( '_bbp_super_sticky_topics', $stickies );
-                            }
-                            if( $data['_bbp_topic_type']['value']=='stick' ) {
-                                update_post_meta( $postarr['post_parent'], '_bbp_sticky_topics', $stickies );
-                            }
-                        }
-                    }
-                    // Set parent for topics only
-                    if( function_exists( 'bbp_get_topic_post_type' ) ) {
-                        if( $postarr['post_type']==bbp_get_topic_post_type() ) {
-                            update_post_meta( $post_id, '_bbp_author_ip', bbp_current_author_ip() );
-                            if( isset( $postarr['post_parent'] ) ) {
-                                if( $postarr['post_parent']!=0 ) {
-                                    update_post_meta( $post_id, '_bbp_forum_id', $postarr['post_parent'] );
-                                }
-                            }
-                        }
-                    }
-                    // Subscribe to the Topic
-                    if( function_exists( 'bbp_add_user_subscription' ) ) {
-                        if( isset( $data['bbp_subscribe'] ) ) {
-                            $bbp_subscribe = filter_var( $data['bbp_subscribe']['value'], FILTER_VALIDATE_BOOLEAN );
-                            if( $bbp_subscribe===true) {
-                                $result = bbp_add_user_subscription( $postarr['post_author'], $post_id );
-                            }
-                        }
-                    }
-
-                    // Collect categories from the field tax_input
-                    if( $tax_input!='' ) {
-                        $tax_input_array = array();
-                        $categories = explode( ",", $tax_input );
-                        foreach( $categories as $slug ) {
-                            $slug = trim($slug);
-                            if( !empty( $slug ) ) {
-                                $tax_input_array[] = $slug;
-                            }
-                        }
-                        wp_set_object_terms( $post_id, $tax_input_array, $cat_taxonomy );
-                    }
-
-                    // Collect tags from the field tags_input
-                    if( $tags_input!='' ) {
-                        $tags_input_array = array();
-                        $tags = explode( ",", $tags_input );
-                        foreach( $tags as $slug ) {
-                            $slug = trim($slug);
-                            if( !empty( $slug ) ) {
-                                $tags_input_array[] = $slug;
-                            }
-                        }
-                        wp_set_object_terms($post_id, $tags_input_array, $tag_taxonomy );
-                    }
-
-                    // Check if we are saving a WooCommerce product
-                    if( $postarr['post_type']=='product' ) {
-
-                        // Set the product type (default = simple)
-                        $product_type = sanitize_text_field( $settings['woocommerce_product_type'] );
-                        if( isset( $data['product_type'] ) ) $product_type = sanitize_text_field( $data['product_type']['value'] );
-                        if( $product_type=='' ) $product_type = 'simple';
-                        wp_set_object_terms( $post_id, $product_type, 'product_type' );
-
-                        // Set the shipping class (default = none)
-                        $shipping_class = 0;
-                        if( isset( $data['product_shipping_class'] ) ) $shipping_class = absint( $data['product_shipping_class']['value'] );
-                        if( $shipping_class!=0 ) {
-                            wp_set_object_terms( $post_id, absint($shipping_class), 'product_shipping_class' );
-                        }
-
-                        // Save all the product meta data
-                        $fields = array(
-                            'product_downloadable' => '_downloadable',
-                            'product_virtual' => '_virtual',
-                            'product_visibility' => '_visibility',
-                            'product_featured' => '_featured',
-                            'product_stock_status' => '_stock_status',
-                            'product_manage_stock' => '_manage_stock',
-                            'product_stock' => '_stock',
-                            'product_backorders' => '_backorders',
-                            'product_sold_individually' => '_sold_individually',
-                            'product_regular_price' => '_regular_price',
-                            'product_sale_price' => '_sale_price',
-                            'product_purchase_note' => '_purchase_note',
-                            'product_weight' => '_weight',
-                            'product_length' => '_length',
-                            'product_width' => '_width',
-                            'product_height' => '_height',
-                            'product_sku' => '_sku',
-                            'product_attributes' => '_product_attributes',
-                            'product_sale_price_dates_from' => '_sale_price_dates_from',
-                            'product_sale_price_dates_to' => '_sale_price_dates_to',
-                            'product_price' => '_price',
-                            
-                            'product_downloadable_files' => '_downloadable_files',
-                            'product_download_limit' => '_download_limit',
-                            'product_download_expiry' => '_download_expiry',
-                            'product_download_type' => '_download_type',
-
-                            'product_url' => '_product_url',
-                            'product_button_text' => '_button_text',
-                            
-                            'product_upsell_ids' => 'upsell_ids',
-                            'product_crosssell_ids' => 'crosssell_ids',
-                            
-                            // Do we really need this? I don't think so, if a client requests this we will add it
-                            // For now we will just comment it
-                            //'product_total_sales' => 'total_sales',
-
-                            // file paths will be stored in an array keyed off md5(file path)
-                            //$downdloadArray =array('name'=>"Test", 'file' => $uploadDIR['baseurl']."/video/".$video);
-                            //$file_path =md5($uploadDIR['baseurl']."/video/".$video);
-                            //$_file_paths[  $file_path  ] = $downdloadArray;
-                            // grant permission to any newly added files on any existing orders for this product
-                            // do_action( 'woocommerce_process_product_file_download_paths', $post_id, 0, $downdloadArray );
-                            //update_post_meta( $post_id, '_downloadable_files', $_file_paths);
-                            //update_post_meta( $post_id, '_download_limit', '');
-                            //update_post_meta( $post_id, '_download_expiry', '');
-                            //update_post_meta( $post_id, '_download_type', '');
-
-                        );
-                        foreach( $fields as $k => $v ) {
-                            if( ( $k=='product_sale_price_dates_from' ) || ( $k=='product_sale_price_dates_to' ) ) {
-                                $field_value = '';
-                                if( isset( $data[$k] ) ) {
-                                    if( $data[$k]['value']!='' ) {
-                                        $field_value = strtotime( $data[$k]['value'] );
-                                        update_post_meta( $post_id, $v, $field_value );
-                                    }
-                                }
-                                continue;
-                            }
-                            if( $k=='product_downloadable_files' ) {
-                                if( isset( $data['downloadable_files'] ) ) {
-                                    $files = array();
-                                    $_file_paths = array();
-                                    foreach( $data['downloadable_files']['files'] as $v ) {
-                                        $name = get_the_title( $v['attachment'] );
-                                        $url = $v['url'];
-                                        $array = array( 'name'=>$name, 'file' => $url );
-                                        $url = md5( $url );
-                                        $_file_paths[$url] = $array;
-                                    }
-                                    update_post_meta( $post_id, '_downloadable_files', $_file_paths);
-                                }
-                                continue;
-                            }
-                            if( $k=='product_attributes' ) {
-                                    
-                                // Lets make sure we loop through all the product attributes in case a column was set to use Add more + feature
-                                $_product_attributes = array();
-                                foreach( $data as $dk => $dv ) {
-                                    if( ( ($dk=='product_attributes') || (strpos($dk, 'product_attributes_') !== false) ) && (strpos($dk, 'product_attributes_name') === false) ) {
-                                        $counter = str_replace('product_attributes_', '', $dv['name']);
-                                        $counter = absint($counter);
-                                        $value = '';
-                                        $visible = '1';
-                                        $variation = '0';
-                                        $taxonomy = '0';
-                                        if( $counter==0 ) {
-                                            $name = 'Variation 1';
-                                            if( isset( $data['product_attributes_name'] ) ) {
-                                                $name = sanitize_text_field( $data['product_attributes_name']['value'] );
-                                            }
-                                            if( isset( $data['product_attributes'] ) ) {
-                                                $value = sanitize_text_field( $data['product_attributes']['value'] );
-                                            }
-                                            if( isset( $data['product_attributes_is_visible'] ) ) {
-                                                $visible = sanitize_text_field( $data['product_attributes_is_visible']['value'] );
-                                                if( ($visible=='1') || ($visible=='true') || ($visible=='yes') ) {
-                                                    $visible = '1';
-                                                }
-                                            }
-                                            if( isset( $data['product_attributes_is_variation'] ) ) {
-                                                $variation = sanitize_text_field( $data['product_attributes_is_variation']['value'] );
-                                                if( ($variation=='1') || ($variation=='true') || ($variation=='yes') ) {
-                                                    $variation = '1';
-                                                }
-                                            }
-                                            if( isset( $data['product_attributes_is_taxonomy'] ) ) {
-                                                $taxonomy = sanitize_text_field( $data['product_attributes_is_taxonomy']['value'] );
-                                                if( ($taxonomy=='1') || ($taxonomy=='true') || ($taxonomy=='yes') ) {
-                                                    $taxonomy = '1';
-                                                }
-                                            }
-                                        }else{
-                                            $name = 'Variation ' . $counter;
-                                            if( isset( $data['product_attributes_name_' . $counter] ) ) {
-                                                $name = sanitize_text_field( $data['product_attributes_name_' . $counter]['value'] );
-                                            }
-                                            if( isset( $data['product_attributes_' . $counter] ) ) {
-                                                $value = sanitize_text_field( $data['product_attributes_' . $counter]['value'] );
-                                            }                                            
-                                            if( isset( $data['product_attributes_is_visible_' . $counter] ) ) {
-                                                $visible = sanitize_text_field( $data['product_attributes_is_visible_' . $counter]['value'] );
-                                                if( ($visible=='1') || ($visible=='true') || ($visible=='yes') ) {
-                                                    $visible = '1';
-                                                }
-                                            }
-                                            if( isset( $data['product_attributes_is_variation_' . $counter] ) ) {
-                                                $variation = sanitize_text_field( $data['product_attributes_is_variation_' . $counter]['value'] );
-                                                if( ($variation=='1') || ($variation=='true') || ($variation=='yes') ) {
-                                                    $variation = '1';
-                                                }
-                                            }                                            
-                                            if( isset( $data['product_attributes_is_taxonomy_' . $counter] ) ) {
-                                                $taxonomy = sanitize_text_field( $data['product_attributes_is_taxonomy_' . $counter]['value'] );
-                                                if( ($taxonomy=='1') || ($taxonomy=='true') || ($taxonomy=='yes') ) {
-                                                    $taxonomy = '1';
-                                                }
-                                            }
-                                        }
-                                        $term_taxonomy_ids = wp_set_object_terms( $post_id, $value, $name, true );
-                                        $_product_attributes[$name]['name'] = $name;
-                                        $_product_attributes[$name]['value'] = $value;
-                                        $_product_attributes[$name]['is_visible'] = $visible;
-                                        $_product_attributes[$name]['is_variation'] = $variation;
-                                        $_product_attributes[$name]['is_taxonomy'] = $taxonomy;
-                                        update_post_meta( $post_id, '_product_attributes', $_product_attributes);
-                                    } 
-                                }
-                                continue;
-                            }
-
-                            $field_value = '';
-                            if( isset( $settings['woocommerce_'.$k] ) ) $field_value = sanitize_text_field( $settings['woocommerce_'.$k] );
-                            if( isset( $data[$k] ) ) $field_value = sanitize_text_field( $data[$k]['value'] );
-                            update_post_meta( $post_id, $v, $field_value );
-                        }
-
-                        // If we are saving a WooCommerce product check if we need to add images to the gallery
-                        if( isset( $data['image_gallery'] ) ) {
-                            $files = array();
-                            foreach( $data['image_gallery']['files'] as $v ) {
-                                $files[] = $v['attachment'];
-                            }
-                            $files = implode( ',', $files );
-                            update_post_meta( $post_id, '_product_image_gallery', $files );
-                        }
-
-                        // Sales and prices
-                        if ( in_array( $product_type, array( 'variable', 'grouped' ) ) ) {
-                            // Variable and grouped products have no prices
-                            update_post_meta( $post_id, '_regular_price', '' );
-                            update_post_meta( $post_id, '_sale_price', '' );
-                            update_post_meta( $post_id, '_sale_price_dates_from', '' );
-                            update_post_meta( $post_id, '_sale_price_dates_to', '' );
-                            update_post_meta( $post_id, '_price', '' );
-                        }else{
-                            // Regular Price
-                            if ( isset( $data['product_regular_price'] ) ) {
-                                $regular_price = ( '' === $data['product_regular_price']['value'] ) ? '' : wc_format_decimal( $data['product_regular_price']['value'] );
-                                update_post_meta( $post_id, '_regular_price', $regular_price );
-                            } else {
-                                $regular_price = get_post_meta( $post_id, '_regular_price', true );
-                            }
-
-                            // Sale Price
-                            if ( isset( $data['product_sale_price'] ) ) {
-                                $sale_price = ( '' === $data['product_sale_price']['value'] ) ? '' : wc_format_decimal( $data['product_sale_price']['value'] );
-                                update_post_meta( $post_id, '_sale_price', $sale_price );
-                            } else {
-                                $sale_price = get_post_meta( $post_id, '_sale_price', true );
-                            }
-                            $date_from = isset( $data['product_sale_price_dates_from'] ) ? strtotime( $data['product_sale_price_dates_from']['value'] ) : get_post_meta( $post_id, '_sale_price_dates_from', true );
-                            $date_to   = isset( $data['product_sale_price_dates_to'] ) ? strtotime( $data['product_sale_price_dates_to']['value'] ) : get_post_meta( $post_id, '_sale_price_dates_to', true );
-
-                            // Dates
-                            if ( $date_from ) {
-                                update_post_meta( $post_id, '_sale_price_dates_from', $date_from );
-                            } else {
-                                update_post_meta( $post_id, '_sale_price_dates_from', '' );
-                            }
-                            if ( $date_to ) {
-                                update_post_meta( $post_id, '_sale_price_dates_to', $date_to );
-                            } else {
-                                update_post_meta( $post_id, '_sale_price_dates_to', '' );
-                            }
-                            if ( $date_to && ! $date_from ) {
-                                $date_from = strtotime( 'NOW', current_time( 'timestamp' ) );
-                                update_post_meta( $post_id, '_sale_price_dates_from', $date_from );
-                            }
-
-                            // Update price if on sale
-                            if ( '' !== $sale_price && '' == $date_to && '' == $date_from ) {
-                                update_post_meta( $post_id, '_price', wc_format_decimal( $sale_price ) );
-                            } else {
-                                update_post_meta( $post_id, '_price', $regular_price );
-                            }
-                            if ( '' !== $sale_price && $date_from && $date_from <= strtotime( 'NOW', current_time( 'timestamp' ) ) ) {
-                                update_post_meta( $post_id, '_price', wc_format_decimal( $sale_price ) );
-                            }
-                            if ( $date_to && $date_to < strtotime( 'NOW', current_time( 'timestamp' ) ) ) {
-                                update_post_meta( $post_id, '_price', $regular_price );
-                                update_post_meta( $post_id, '_sale_price_dates_from', '' );
-                                update_post_meta( $post_id, '_sale_price_dates_to', '' );
-                            }
-                        }
-                    }
-
-                    // Save custom post meta
-                    $meta_data = array();
-                    $custom_meta = explode( "\n", $settings['woocommerce_meta'] );
-                    foreach( $custom_meta as $k ) {
-                        $field = explode( "|", $k );
-                        if( isset( $data[$field[0]]['value'] ) ) {
-                            $meta_data[$field[1]] = $data[$field[0]]['value'];
-                        }
-                    }
-                    foreach( $meta_data as $k => $v ) {
-                        add_post_meta( $post_id, $k, $v );
-                    }
-
-                    // Set post format for the post if theme supports it and if it was set by the form settings or by one of the form fields
-                    if ( current_theme_supports( 'post-formats' ) ) {
-                        $post_formats = get_theme_support( 'post-formats' );
-                        if ( is_array( $post_formats[0] ) ) {
-                            if ( in_array( $post_format, $post_formats[0] ) ) {
-                                set_post_format( $post_id , $post_format);
-                            }
-                        }
-                    }
-
-                    // Set the featured image if a file upload field with the name featured_image was found
-                    if( isset( $data['featured_image'] ) ) {
-                        set_post_thumbnail( $post_id, $data['featured_image']['files'][0]['attachment'] );
-                    }
-
-                    // @since 1.0.1
-                    do_action( 'super_woocommerce_after_insert_post_action', array( 'post_id'=>$post_id, 'data'=>$data, 'atts'=>$atts ) );
-
-
-                }
             }
+
         }
 
 
@@ -685,6 +287,86 @@ if(!class_exists('SUPER_WooCommerce')) :
                         'values' => array(
                             'true' => __( 'Enable WooCommerce Checkout', 'super-forms' ),
                         ),
+                    ),               
+                    'woocommerce_checkout_send_admin_email' => array(
+                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_checkout_send_admin_email', $settings['settings'], '' ),
+                        'type' => 'checkbox',
+                        'values' => array(
+                            'true' => __( 'Send admin email only after payment completed', 'super-forms' ),
+                        ),
+                        'filter' => true,
+                        'parent' => 'woocommerce_checkout',
+                        'filter_value' => 'true',
+                    ),
+                    'woocommerce_checkout_send_confirm_email' => array(
+                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_checkout_send_confirm_email', $settings['settings'], '' ),
+                        'type' => 'checkbox',
+                        'values' => array(
+                            'true' => __( 'Send confirmation email only after payment completed', 'super-forms' ),
+                        ),
+                        'filter' => true,
+                        'parent' => 'woocommerce_checkout',
+                        'filter_value' => 'true',
+                    ),
+                    'woocommerce_checkout_send_complete_email' => array(
+                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_checkout_send_complete_email', $settings['settings'], '' ),
+                        'type' => 'checkbox',
+                        'filter' => true,
+                        'parent' => 'woocommerce_checkout',
+                        'filter_value' => 'true',
+                        'values' => array(
+                            'true' => __( 'Send a email when payment completed', 'super-forms' ),
+                        ),
+                    ),
+                    'woocommerce_checkout_empty_cart' => array(
+                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_checkout_empty_cart', $settings['settings'], '' ),
+                        'type' => 'checkbox',
+                        'values' => array(
+                            'true' => __( 'Empty cart before adding products', 'super-forms' ),
+                        ),
+                        'filter' => true,
+                        'parent' => 'woocommerce_checkout',
+                        'filter_value' => 'true',
+                    ),
+                    'woocommerce_checkout_products' => array(
+                        'name' => __( 'Enter the product(s) ID that needs to be added to the cart', 'super' ) . '<br /><i>' . __( 'If field is inside dynamic column, system will automatically add all the products. Put each product ID with it\'s quantity on a new line separated by pipes "|".<br />Example with tags: "{product_title}|{product_quantity}"<br />Example without tags: "82921|3".<br />In case you want to use dynamic price per product you may also add the price: "{product_title}|{product_quantity}|{product_price}"', 'super' ) . '</i>',
+                        'desc' => __( 'Put each on a new line, {tags} can be used to retrieve data', 'super' ),
+                        'type' => 'textarea',
+                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_checkout_products', $settings['settings'], "{product_id}|{product_quantity}" ),
+                        'filter' => true,
+                        'parent' => 'woocommerce_checkout',
+                        'filter_value' => 'true',
+                    ),
+                    'woocommerce_checkout_remove_coupons' => array(
+                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_checkout_remove_coupons', $settings['settings'], '' ),
+                        'type' => 'checkbox',
+                        'values' => array(
+                            'true' => __( 'Remove/clear coupons before redirecting to cart', 'super-forms' ),
+                        ),
+                        'filter' => true,
+                        'parent' => 'woocommerce_checkout',
+                        'filter_value' => 'true',
+                    ),
+                    'woocommerce_checkout_coupon' => array(
+                        'name' => __( 'Apply the following coupon code (leave blank for none):', 'super' ),
+                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_checkout_coupon', $settings['settings'], '' ),
+                        'type' => 'text',
+                        'filter' => true,
+                        'parent' => 'woocommerce_checkout',
+                        'filter_value' => 'true',
+                    ),
+                    'woocommerce_redirect' => array(
+                        'name' => __( 'Redirect to Checkout page or Shopping Cart?', 'super' ),
+                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_redirect', $settings['settings'], 'checkout' ),
+                        'type' => 'select',
+                        'values' => array(
+                            'checkout' => __( 'Checkout page (default)', 'super-forms' ),
+                            'cart' => __( 'Shopping Cart', 'super-forms' ),
+                            'none' => __( 'None (no redirect)', 'super-forms' ),
+                        ),
+                        'filter' => true,
+                        'parent' => 'woocommerce_checkout',
+                        'filter_value' => 'true',
                     ),
                 )
             );
