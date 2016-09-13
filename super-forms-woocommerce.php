@@ -126,6 +126,7 @@ if(!class_exists('SUPER_WooCommerce')) :
                 // Filters since 1.0.0
 
                 // Actions since 1.0.0
+                add_action( 'woocommerce_cart_calculate_fees', array( $this, 'additional_shipping_costs' ), 5 );
 
             }
             
@@ -147,6 +148,25 @@ if(!class_exists('SUPER_WooCommerce')) :
 
             }
             
+        }
+
+
+        /**
+         * Add additional shipping costs
+         * 
+         * @since       1.0.0
+        */
+        public function additional_shipping_costs( ) {
+            global $woocommerce;
+            if( isset( $_SESSION['_super_wc_fee'] ) ) {
+                foreach( $_SESSION['_super_wc_fee'] as $k => $v ) {
+                    if( $v['amount']>0 ) {
+                        $woocommerce->cart->add_fee( $v['name'], $v['amount'], false, '' );
+                    }else{
+                        $woocommerce->cart->add_fee( $v['name'], $v['amount'], false, '' );
+                    }
+                }
+            }
         }
 
 
@@ -184,19 +204,22 @@ if(!class_exists('SUPER_WooCommerce')) :
                 foreach( $woocommerce_checkout_products as $k => $v ) {
                     $product =  explode( "|", $v );
                     $product_id = '';
-                    $product_quantity = '';
+                    $product_quantity = 0;
                     $product_variation_id = '';
                     $product_price = '';
-                    if( isset( $product[2] ) ) $product_id = SUPER_Common::email_tags( $product[0], $data, $settings );
-                    if( isset( $product[2] ) ) $product_quantity = SUPER_Common::email_tags( $product[1], $data, $settings );
+                    if( isset( $product[0] ) ) $product_id = SUPER_Common::email_tags( $product[0], $data, $settings );
+                    if( isset( $product[1] ) ) $product_quantity = SUPER_Common::email_tags( $product[1], $data, $settings );
                     if( isset( $product[2] ) ) $product_variation_id = SUPER_Common::email_tags( $product[2], $data, $settings );
-                    if( isset( $product[2] ) ) $product_price = SUPER_Common::email_tags( $product[3], $data, $settings );
-                    $products[] = array(
-                        'id' => absint($product_id),
-                        'quantity' => $product_quantity,
-                        'variation_id' => $product_variation_id,
-                        'price' => $product_price,
-                    );
+                    if( isset( $product[3] ) ) $product_price = SUPER_Common::email_tags( $product[3], $data, $settings );
+                    $product_quantity = absint($product_quantity);
+                    if( $product_quantity>0 ) {
+                        $products[] = array(
+                            'id' => absint($product_id),
+                            'quantity' => $product_quantity,
+                            'variation_id' => absint($product_variation_id),
+                            'price' => $product_price,
+                        );
+                    }
                 }
 
                 global $woocommerce;
@@ -214,6 +237,51 @@ if(!class_exists('SUPER_WooCommerce')) :
                 // Add discount
                 if( (isset($settings['woocommerce_checkout_coupon'])) && ($settings['woocommerce_checkout_coupon']!='') ) {
                     $woocommerce->cart->add_discount($settings['woocommerce_checkout_coupon']);
+                }
+
+                // Delete any fees
+                if( (isset($settings['woocommerce_checkout_remove_fees'])) && ($settings['woocommerce_checkout_remove_fees']=='true') ) {
+                    $woocommerce->session->set( 'fees', array() );
+                    unset($_SESSION['_super_wc_fee']);
+                }
+
+                // Add fee
+                if( (isset($settings['woocommerce_checkout_fees'])) && ($settings['woocommerce_checkout_fees']!='') ) {
+                    
+                    // $name
+                    // ( string ) required – Unique name for the fee. Multiple fees of the same name cannot be added.
+
+                    // $amount
+                    // ( float ) required – Fee amount.
+
+                    // $taxable
+                    // ( bool ) optional – (default: false) Is the fee taxable?
+
+                    // $tax_class
+                    // ( string ) optional – (default: '') The tax class for the fee if taxable. A blank string is standard tax class.
+
+                    $fees = array();
+                    $woocommerce_checkout_fees = explode( "\n", $settings['woocommerce_checkout_fees'] );  
+                    foreach( $woocommerce_checkout_fees as $k => $v ) {
+                        $fee =  explode( "|", $v );
+                        $name = '';
+                        $amount = 0;
+                        $taxable = false;
+                        $tax_class = '';
+                        if( isset( $fee[0] ) ) $name = SUPER_Common::email_tags( $fee[0], $data, $settings );
+                        if( isset( $fee[1] ) ) $amount = SUPER_Common::email_tags( $fee[1], $data, $settings );
+                        if( isset( $fee[2] ) ) $taxable = SUPER_Common::email_tags( $fee[2], $data, $settings );
+                        if( isset( $fee[3] ) ) $tax_class = SUPER_Common::email_tags( $fee[3], $data, $settings );
+                        if( $amount>0 ) {
+                            $fees[] = array(
+                                'name' => $name,
+                                'amount' => $amount,
+                                'taxable' => $taxable,
+                                'tax_class' => $tax_class,
+                            );
+                        }
+                    }
+                    $_SESSION['_super_wc_fee'] = $fees;
                 }
 
                 global $wpdb;
@@ -236,11 +304,20 @@ if(!class_exists('SUPER_WooCommerce')) :
                     // $cart_item_data
                     // ( array ) optional – extra cart item data we want to pass into the item
 
-                    $product = wc_get_product( $v['id'] );
-                    $attributes = $product->get_variation_attributes();
+                    if( class_exists('WC_Name_Your_Price_Helpers') ) {
+                        $posted_nyp_field = 'nyp' . apply_filters( 'nyp_field_prefix', '', $v['id'] );
+                        $_REQUEST[$posted_nyp_field] = (double) WC_Name_Your_Price_Helpers::standardize_number($v['price']);
+                    }
+
                     $new_attributes = array();
-                    foreach( $attributes as $ak => $av ) {
-                        $new_attributes[$ak] = get_post_meta( $v['variation_id'], 'attribute_' . $ak, true );
+                    if( $v['variation_id']!=0 ) {
+                        $product = wc_get_product( $v['id'] );
+                        if( $product->product_type=='variable' ) {
+                            $attributes = $product->get_variation_attributes();
+                            foreach( $attributes as $ak => $av ) {
+                                $new_attributes[$ak] = get_post_meta( $v['variation_id'], 'attribute_' . $ak, true );
+                            }
+                        }
                     }
                     $woocommerce->cart->add_to_cart( $v['id'], $v['quantity'], $v['variation_id'], $new_attributes );
 
@@ -329,10 +406,10 @@ if(!class_exists('SUPER_WooCommerce')) :
                         'filter_value' => 'true',
                     ),
                     'woocommerce_checkout_products' => array(
-                        'name' => __( 'Enter the product(s) ID that needs to be added to the cart', 'super' ) . '<br /><i>' . __( 'If field is inside dynamic column, system will automatically add all the products. Put each product ID with it\'s quantity on a new line separated by pipes "|".<br />Example with tags: "{product_title}|{product_quantity}"<br />Example without tags: "82921|3".<br />In case you want to use dynamic price per product you may also add the price: "{product_title}|{product_quantity}|{product_price}"', 'super' ) . '</i>',
+                        'name' => __( 'Enter the product(s) ID that needs to be added to the cart', 'super' ) . '<br /><i>' . __( 'If field is inside dynamic column, system will automatically add all the products. Put each product ID with it\'s quantity on a new line separated by pipes "|".<br /><strong>Example with tags:</strong> {id}|{quantity}<br /><strong>Example without tags:</strong> 82921|3<br /><strong>Example with variations:</strong> {id}|{quantity}|{variation_id}<br /><strong>Example with dynamic pricing:</strong> {id}|{quantity}|none|{price}<br /><strong>Allowed values:</strong> integer|integer|integer|float<br />(dynamic pricing requires <a target="_blank" href="https://woocommerce.com/products/name-your-price/">WooCommerce Name Your Price add-on</a>).', 'super' ) . '</i>',
                         'desc' => __( 'Put each on a new line, {tags} can be used to retrieve data', 'super' ),
                         'type' => 'textarea',
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_checkout_products', $settings['settings'], "{product_id}|{product_quantity}" ),
+                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_checkout_products', $settings['settings'], "{id}|{quantity}|none|{price}" ),
                         'filter' => true,
                         'parent' => 'woocommerce_checkout',
                         'filter_value' => 'true',
@@ -346,7 +423,7 @@ if(!class_exists('SUPER_WooCommerce')) :
                         'filter' => true,
                         'parent' => 'woocommerce_checkout',
                         'filter_value' => 'true',
-                    ),
+                    ),                
                     'woocommerce_checkout_coupon' => array(
                         'name' => __( 'Apply the following coupon code (leave blank for none):', 'super' ),
                         'default' => SUPER_Settings::get_value( 0, 'woocommerce_checkout_coupon', $settings['settings'], '' ),
@@ -355,6 +432,25 @@ if(!class_exists('SUPER_WooCommerce')) :
                         'parent' => 'woocommerce_checkout',
                         'filter_value' => 'true',
                     ),
+                    'woocommerce_checkout_fees' => array(
+                        'name' => __( 'Add checkout fee(s)', 'super' ) . '<br /><i>' . __( 'Put each fee on a new line with values seperated by pipes "|".<br /><strong>Example with tags:</strong> {fee_name}|{amount}|{taxable}|{tax_class}<br /><strong>Example without tags:</strong> Administration fee|5|fales|\'\'<br /><strong>Allowed values:</strong> string|float|bool|string', 'super' ) . '</i>',
+                        'desc' => __( 'Leave blank for no fees', 'super' ),
+                        'type' => 'textarea',
+                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_checkout_fees', $settings['settings'], "{fee_name}|{amount}|{taxable}|{tax_class}" ),
+                        'filter' => true,
+                        'parent' => 'woocommerce_checkout',
+                        'filter_value' => 'true',
+                    ),
+                    'woocommerce_checkout_remove_fees' => array(
+                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_checkout_remove_fees', $settings['settings'], '' ),
+                        'type' => 'checkbox',
+                        'values' => array(
+                            'true' => __( 'Remove/clear fees before redirecting to cart', 'super-forms' ),
+                        ),
+                        'filter' => true,
+                        'parent' => 'woocommerce_checkout',
+                        'filter_value' => 'true',
+                    ), 
                     'woocommerce_redirect' => array(
                         'name' => __( 'Redirect to Checkout page or Shopping Cart?', 'super' ),
                         'default' => SUPER_Settings::get_value( 0, 'woocommerce_redirect', $settings['settings'], 'checkout' ),
