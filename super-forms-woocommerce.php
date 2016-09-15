@@ -121,6 +121,16 @@ if(!class_exists('SUPER_WooCommerce')) :
         */
         private function init_hooks() {
             
+            add_action( 'super_front_end_posting_after_insert_post_action', array( $this, 'save_wc_order_post_session_data' ) );
+            add_action( 'woocommerce_checkout_update_order_meta', array( $this, 'update_order_meta' ) );
+
+
+            add_action( 'woocommerce_checkout_order_processed', array( $this, 'woocommerce_checkout_order_processed' ) );
+            add_action( 'woocommerce_payment_complete_order_status', array( $this, 'payment_complete_order_status' ) );
+            add_action( 'woocommerce_order_status_completed', array( $this, 'order_status_completed' ) );
+            add_action( 'woocommerce_order_status_changed', array( $this, 'order_status_changed' ), 1, 3 );
+
+
             if ( $this->is_request( 'frontend' ) ) {
                 
                 // Filters since 1.0.0
@@ -156,7 +166,7 @@ if(!class_exists('SUPER_WooCommerce')) :
          * 
          * @since       1.0.0
         */
-        public function additional_shipping_costs( ) {
+        function additional_shipping_costs( ) {
             global $woocommerce;
             if( isset( $_SESSION['_super_wc_fee'] ) ) {
                 foreach( $_SESSION['_super_wc_fee'] as $k => $v ) {
@@ -171,12 +181,94 @@ if(!class_exists('SUPER_WooCommerce')) :
 
 
         /**
+         * If Front-end posting add-on is activated and being used retrieve the inserted Post ID and save it to the WC Order
+         *
+         *  @since      1.0.0
+        */
+        function save_wc_order_post_session_data( $data ) {
+            global $woocommerce;
+            $post_id = absint($data['post_id']);
+            $settings = $data['atts']['settings'];
+
+            // Check if Front-end Posting is activated
+            if ( class_exists( 'SUPER_Frontend_Posting' ) ) {
+                if( $settings['frontend_posting_action']=='create_post' ) {
+                    $woocommerce->session->set( '_super_wc_post', array( 'id'=>$post_id, 'status'=>$settings['woocommerce_post_status'] ) );
+                }else{
+                    $woocommerce->session->set( '_super_wc_post', array() );
+                }
+            }else{
+                $woocommerce->session->set( '_super_wc_post', array() );
+            }
+        }
+
+
+        /**
+         * Set the post ID and status to the order post_meta so we can update it after payment completed
+         * 
+         * @since       1.0.0
+        */
+        public static function update_order_meta( $order_id, $data ) {
+            global $woocommerce;
+            $_super_wc_post = $woocommerce->session->get( '_super_wc_post', array() );
+            update_post_meta( $order_id, '_super_wc_post', $_super_wc_post );
+        }
+
+
+        /**
+         * After order processed
+         * 
+         * @since       1.0.0
+        */
+        public function woocommerce_checkout_order_processed( $order_id ) {
+            // This could possibly be used to notify the user of an order being processed.
+            // We might want to add an option to send an extra email function after payment processed etc.
+        }
+
+
+        /**
+         * After complete order status
+         * 
+         * @since       1.0.0
+        */
+        public function payment_complete_order_status( $order_id ) {
+            return 'completed';
+        }
+
+
+        /**
+         * After order completed
+         * 
+         * @since       1.0.0
+        */
+        public function order_status_completed( $order_id ) {
+            // What we could do here we do within the "order_status_changed()" function below:
+        }
+
+
+        /**
+         * After order status changed
+         * 
+         * @since       1.0.0
+        */
+        public function order_status_changed( $order_id, $old_status, $new_status ) {
+            if( $new_status=='completed' ) {
+                $_super_wc_post = get_post_meta( $order_id, '_super_wc_post', true );
+                $my_post = array(
+                    'ID' => $_super_wc_post['id'],
+                    'post_status' => $_super_wc_post['status'],
+                );
+                wp_update_post( $my_post );
+            }
+        }
+
+
+        /**
          * Hook into before sending email and check if we need to create or update a post or taxonomy
          *
          *  @since      1.0.0
         */
         public static function before_email_success_msg( $atts ) {
-
             $settings = $atts['settings'];
             if( isset( $atts['data'] ) ) {
                 $data = $atts['data'];
@@ -201,9 +293,83 @@ if(!class_exists('SUPER_WooCommerce')) :
 
                 $products = array();
                 $woocommerce_checkout_products = explode( "\n", $settings['woocommerce_checkout_products'] );  
+                $new_woocommerce_checkout_products = $woocommerce_checkout_products;
                 foreach( $woocommerce_checkout_products as $k => $v ) {
                     $product =  explode( "|", $v );
-                    $product_id = '';
+                    if( isset( $product[0] ) ) $product_id_tag = trim($product[0], '{}');
+                    if( isset( $product[1] ) ) $product_quantity_tag = trim($product[1], '{}');
+                    if( isset( $product[2] ) ) $product_variation_id_tag = trim($product[2], '{}');
+                    if( isset( $product[3] ) ) $product_price_tag = trim($product[3], '{}');
+
+                    $looped = array();
+                    $i=2;
+                    while( isset( $data[$product_id_tag . '_' . ($i)]) ) {
+                        if(!in_array($i, $looped)){
+                            $new_line = '';
+                            if( $product[0][0]=='{' ) { $new_line .= '{' . $product_id_tag . '_' . $i . '}'; }else{ $new_line .= $product[0]; }
+                            if( $product[1][0]=='{' ) { $new_line .= '|{' . $product_quantity_tag . '_' . $i . '}'; }else{ $new_line .= '|' . $product[1]; }
+                            if( $product[2][0]=='{' ) { $new_line .= '|{' . $product_variation_id_tag . '_' . $i . '}'; }else{ $new_line .= '|' . $product[2]; }
+                            if( $product[3][0]=='{' ) { $new_line .= '|{' . $product_price_tag . '_' . $i . '}'; }else{ $new_line .= '|' . $product[3]; }
+                            $new_woocommerce_checkout_products[] = $new_line;
+                            $looped[$i] = $i;
+                            $i++;
+                        }else{
+                            break;
+                        }
+                    }
+
+                    $i=2;
+                    while( isset( $data[$product_quantity_tag . '_' . ($i)]) ) {
+                        if(!in_array($i, $looped)){
+                            $new_line = '';
+                            if( $product[0][0]=='{' ) { $new_line .= '{' . $product_id_tag . '_' . $i . '}'; }else{ $new_line .= $product[0]; }
+                            if( $product[1][0]=='{' ) { $new_line .= '|{' . $product_quantity_tag . '_' . $i . '}'; }else{ $new_line .= '|' . $product[1]; }
+                            if( $product[2][0]=='{' ) { $new_line .= '|{' . $product_variation_id_tag . '_' . $i . '}'; }else{ $new_line .= '|' . $product[2]; }
+                            if( $product[3][0]=='{' ) { $new_line .= '|{' . $product_price_tag . '_' . $i . '}'; }else{ $new_line .= '|' . $product[3]; }
+                            $new_woocommerce_checkout_products[] = $new_line;
+                            $looped[$i] = $i;
+                            $i++;
+                        }else{
+                            break;
+                        }
+                    }
+
+                    $i=2;
+                    while( isset( $data[$product_variation_id_tag . '_' . ($i)]) ) {
+                        if(!in_array($i, $looped)){
+                            $new_line = '';
+                            if( $product[0][0]=='{' ) { $new_line .= '{' . $product_id_tag . '_' . $i . '}'; }else{ $new_line .= $product[0]; }
+                            if( $product[1][0]=='{' ) { $new_line .= '|{' . $product_quantity_tag . '_' . $i . '}'; }else{ $new_line .= '|' . $product[1]; }
+                            if( $product[2][0]=='{' ) { $new_line .= '|{' . $product_variation_id_tag . '_' . $i . '}'; }else{ $new_line .= '|' . $product[2]; }
+                            if( $product[3][0]=='{' ) { $new_line .= '|{' . $product_price_tag . '_' . $i . '}'; }else{ $new_line .= '|' . $product[3]; }
+                            $new_woocommerce_checkout_products[] = $new_line;
+                            $looped[$i] = $i;
+                            $i++;
+                        }else{
+                            break;
+                        }
+                    }
+
+                    $i=2;
+                    while( isset( $data[$product_price_tag . '_' . ($i)]) ) {
+                        if(!in_array($i, $looped)){
+                            $new_line = '';
+                            if( $product[0][0]=='{' ) { $new_line .= '{' . $product_id_tag . '_' . $i . '}'; }else{ $new_line .= $product[0]; }
+                            if( $product[1][0]=='{' ) { $new_line .= '|{' . $product_quantity_tag . '_' . $i . '}'; }else{ $new_line .= '|' . $product[1]; }
+                            if( $product[2][0]=='{' ) { $new_line .= '|{' . $product_variation_id_tag . '_' . $i . '}'; }else{ $new_line .= '|' . $product[2]; }
+                            if( $product[3][0]=='{' ) { $new_line .= '|{' . $product_price_tag . '_' . $i . '}'; }else{ $new_line .= '|' . $product[3]; }
+                            $new_woocommerce_checkout_products[] = $new_line;
+                            $looped[$i] = $i;
+                            $i++;
+                        }else{
+                            break;
+                        }
+                    }
+                }
+
+                foreach( $new_woocommerce_checkout_products as $k => $v ) {
+                    $product =  explode( "|", $v );
+                    $product_id = 0;
                     $product_quantity = 0;
                     $product_variation_id = '';
                     $product_price = '';
@@ -215,7 +381,7 @@ if(!class_exists('SUPER_WooCommerce')) :
                     if( $product_quantity>0 ) {
                         $products[] = array(
                             'id' => absint($product_id),
-                            'quantity' => $product_quantity,
+                            'quantity' => absint($product_quantity),
                             'variation_id' => absint($product_variation_id),
                             'price' => $product_price,
                         );
@@ -365,41 +531,31 @@ if(!class_exists('SUPER_WooCommerce')) :
                             'true' => __( 'Enable WooCommerce Checkout', 'super-forms' ),
                         ),
                     ),               
-                    'woocommerce_checkout_send_admin_email' => array(
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_checkout_send_admin_email', $settings['settings'], '' ),
-                        'type' => 'checkbox',
-                        'values' => array(
-                            'true' => __( 'Send admin email only after payment completed', 'super-forms' ),
-                        ),
-                        'filter' => true,
-                        'parent' => 'woocommerce_checkout',
-                        'filter_value' => 'true',
-                    ),
-                    'woocommerce_checkout_send_confirm_email' => array(
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_checkout_send_confirm_email', $settings['settings'], '' ),
-                        'type' => 'checkbox',
-                        'values' => array(
-                            'true' => __( 'Send confirmation email only after payment completed', 'super-forms' ),
-                        ),
-                        'filter' => true,
-                        'parent' => 'woocommerce_checkout',
-                        'filter_value' => 'true',
-                    ),
-                    'woocommerce_checkout_send_complete_email' => array(
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_checkout_send_complete_email', $settings['settings'], '' ),
-                        'type' => 'checkbox',
-                        'filter' => true,
-                        'parent' => 'woocommerce_checkout',
-                        'filter_value' => 'true',
-                        'values' => array(
-                            'true' => __( 'Send a email when payment completed', 'super-forms' ),
-                        ),
-                    ),
                     'woocommerce_checkout_empty_cart' => array(
                         'default' => SUPER_Settings::get_value( 0, 'woocommerce_checkout_empty_cart', $settings['settings'], '' ),
                         'type' => 'checkbox',
                         'values' => array(
                             'true' => __( 'Empty cart before adding products', 'super-forms' ),
+                        ),
+                        'filter' => true,
+                        'parent' => 'woocommerce_checkout',
+                        'filter_value' => 'true',
+                    ),
+                    'woocommerce_checkout_remove_coupons' => array(
+                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_checkout_remove_coupons', $settings['settings'], '' ),
+                        'type' => 'checkbox',
+                        'values' => array(
+                            'true' => __( 'Remove/clear coupons before redirecting to cart', 'super-forms' ),
+                        ),
+                        'filter' => true,
+                        'parent' => 'woocommerce_checkout',
+                        'filter_value' => 'true',
+                    ), 
+                    'woocommerce_checkout_remove_fees' => array(
+                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_checkout_remove_fees', $settings['settings'], '' ),
+                        'type' => 'checkbox',
+                        'values' => array(
+                            'true' => __( 'Remove/clear fees before redirecting to cart', 'super-forms' ),
                         ),
                         'filter' => true,
                         'parent' => 'woocommerce_checkout',
@@ -414,16 +570,7 @@ if(!class_exists('SUPER_WooCommerce')) :
                         'parent' => 'woocommerce_checkout',
                         'filter_value' => 'true',
                     ),
-                    'woocommerce_checkout_remove_coupons' => array(
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_checkout_remove_coupons', $settings['settings'], '' ),
-                        'type' => 'checkbox',
-                        'values' => array(
-                            'true' => __( 'Remove/clear coupons before redirecting to cart', 'super-forms' ),
-                        ),
-                        'filter' => true,
-                        'parent' => 'woocommerce_checkout',
-                        'filter_value' => 'true',
-                    ),                
+               
                     'woocommerce_checkout_coupon' => array(
                         'name' => __( 'Apply the following coupon code (leave blank for none):', 'super' ),
                         'default' => SUPER_Settings::get_value( 0, 'woocommerce_checkout_coupon', $settings['settings'], '' ),
@@ -441,16 +588,6 @@ if(!class_exists('SUPER_WooCommerce')) :
                         'parent' => 'woocommerce_checkout',
                         'filter_value' => 'true',
                     ),
-                    'woocommerce_checkout_remove_fees' => array(
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_checkout_remove_fees', $settings['settings'], '' ),
-                        'type' => 'checkbox',
-                        'values' => array(
-                            'true' => __( 'Remove/clear fees before redirecting to cart', 'super-forms' ),
-                        ),
-                        'filter' => true,
-                        'parent' => 'woocommerce_checkout',
-                        'filter_value' => 'true',
-                    ), 
                     'woocommerce_redirect' => array(
                         'name' => __( 'Redirect to Checkout page or Shopping Cart?', 'super' ),
                         'default' => SUPER_Settings::get_value( 0, 'woocommerce_redirect', $settings['settings'], 'checkout' ),
@@ -487,310 +624,7 @@ if(!class_exists('SUPER_WooCommerce')) :
                 );
             }
             return $array;
-
-            /*
-            $array['woocommerce'] = array(        
-                'name' => __( 'WooCommerce', 'super' ),
-                'label' => __( 'WooCommerce Settings', 'super' ),
-                'fields' => array(
-                    'woocommerce_post_status' => array(
-                        'name' => __( 'Post status after payment complete', 'super' ),
-                        'desc' => __( 'Select what the status should be (publish, future, draft, pending, private, trash, auto-draft)?', 'super' ),
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_post_status', $settings['settings'], 'publish' ),
-                        'type' => 'select',
-                        'values' => array(
-                            'publish' => __( 'Publish (default)', 'super' ),
-                            'future' => __( 'Future', 'super' ),
-                            'draft' => __( 'Draft', 'super' ),
-                            'pending' => __( 'Pending', 'super' ),
-                            'private' => __( 'Private', 'super' ),
-                            'trash' => __( 'Trash', 'super' ),
-                            'auto-draft' => __( 'Auto-Draft', 'super' ),
-                        ),
-                    ),
-
-                    /*
-                    'woocommerce_action' => array(
-                        'name' => __( 'Actions', 'super' ),
-                        'desc' => __( 'Select what this form should do (register or login)?', 'super' ),
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_action', $settings['settings'], 'none' ),
-                        'filter' => true,
-                        'type' => 'select',
-                        'values' => array(
-                            'none' => __( 'None (do nothing)', 'super' ),
-                            'create_post' => __( 'Create new Post', 'super' ), //(post, page, product etc.)
-                        ),
-                    ),
-                    'woocommerce_post_type' => array(
-                        'name' => __( 'Post type', 'super' ),
-                        'desc' => __( 'Enter the name of the post type (e.g: post, page, product)', 'super' ),
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_post_type', $settings['settings'], 'page' ),
-                        'filter' => true,
-                        'parent' => 'woocommerce_action',
-                        'filter_value' => 'create_post',
-                    ),
-                    'woocommerce_status' => array(
-                        'name' => __( 'Status', 'super' ),
-                        'desc' => __( 'Select what the status should be (publish, future, draft, pending, private, trash, auto-draft)?', 'super' ),
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_status', $settings['settings'], 'publish' ),
-                        'type' => 'select',
-                        'values' => array(
-                            'publish' => __( 'Publish (default)', 'super' ),
-                            'future' => __( 'Future', 'super' ),
-                            'draft' => __( 'Draft', 'super' ),
-                            'pending' => __( 'Pending', 'super' ),
-                            'private' => __( 'Private', 'super' ),
-                            'trash' => __( 'Trash', 'super' ),
-                            'auto-draft' => __( 'Auto-Draft', 'super' ),
-                        ),
-                        'filter' => true,
-                        'parent' => 'woocommerce_action',
-                        'filter_value' => 'create_post',
-                    ),
-                    'woocommerce_post_parent' => array(
-                        'name' => __( 'Parent ID (leave blank for none)', 'super' ),
-                        'desc' => __( 'Enter a parent ID if you want the post to have a parent', 'super' ),
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_post_parent', $settings['settings'], '' ),
-                        'filter' => true,
-                        'parent' => 'woocommerce_action',
-                        'filter_value' => 'create_post',
-                    ),
-                    'woocommerce_comment_status' => array(
-                        'name' => __( 'Allow comments', 'super' ),
-                        'desc' => __( 'Whether the post can accept comments', 'super' ),
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_comment_status', $settings['settings'], '' ),
-                        'type' => 'select',
-                        'values' => array(
-                            '' => __( 'Default (use the default_comment_status option)', 'super' ),
-                            'open' => __( 'Open (allow comments)', 'super' ),
-                            'closed' => __( 'Closed (disallow comments)', 'super' ),
-                        ),
-                        'filter' => true,
-                        'parent' => 'woocommerce_action',
-                        'filter_value' => 'create_post',
-                    ),
-                    'woocommerce_ping_status' => array(
-                        'name' => __( 'Allow pings', 'super' ),
-                        'desc' => __( 'Whether the post can accept pings', 'super' ),
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_ping_status', $settings['settings'], '' ),
-                        'type' => 'select',
-                        'values' => array(
-                            '' => __( 'Default (use the default_ping_status option)', 'super' ),
-                            'open' => __( 'Open (allow pings)', 'super' ),
-                            'closed' => __( 'Closed (disallow pings)', 'super' ),
-                        ),
-                        'filter' => true,
-                        'parent' => 'woocommerce_action',
-                        'filter_value' => 'create_post',
-                    ),
-                    'woocommerce_post_password' => array(
-                        'name' => __( 'Password protect (leave blank for none)', 'super' ),
-                        'desc' => __( 'The password to access the post', 'super' ),
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_post_password', $settings['settings'], '' ),
-                        'filter' => true,
-                        'parent' => 'woocommerce_action',
-                        'filter_value' => 'create_post',
-                    ),
-                    'woocommerce_menu_order' => array(
-                        'name' => __( 'Menu order (blank = 0)', 'super' ),
-                        'desc' => __( 'The order the post should be displayed in', 'super' ),
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_menu_order', $settings['settings'], '' ),
-                        'filter' => true,
-                        'parent' => 'woocommerce_action',
-                        'filter_value' => 'create_post',
-                    ),
-                    'woocommerce_meta' => array(
-                        'name' => __( 'Save custom post meta', 'super' ),
-                        'desc' => __( 'Based on your form fields you can save custom meta for your post', 'super' ),
-                        'type' => 'textarea',
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_meta', $settings['settings'], "field_name|meta_key\nfield_name2|meta_key2\nfield_name3|meta_key3" ),
-                        'filter' => true,
-                        'parent' => 'woocommerce_action',
-                        'filter_value' => 'create_post',
-                    ),
-                    'woocommerce_author' => array(
-                        'name' => __( 'Author ID (default = current user ID if logged in)', 'super' ),
-                        'desc' => __( 'The ID of the user where the post will belong to', 'super' ),
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_author', $settings['settings'], '' ),
-                        'filter' => true,
-                        'parent' => 'woocommerce_action',
-                        'filter_value' => 'create_post',
-                    ),
-                    'woocommerce_post_cat_taxonomy' => array(
-                        'name' => __( 'The cat taxonomy name (e.g: category or product_cat)', 'super' ),
-                        'desc' => __( 'Required to connect the post to categories (if found)', 'super' ),
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_post_cat_taxonomy', $settings['settings'], '' ),
-                        'filter' => true,
-                        'parent' => 'woocommerce_action',
-                        'filter_value' => 'create_post',
-                    ),
-                    'woocommerce_tax_input' => array(
-                        'name' => __( 'The post categories slug(s) (e.g: books, cars)', 'super' ),
-                        'desc' => __( 'Category slug separated by comma', 'super' ),
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_tax_input', $settings['settings'], '' ),
-                        'filter' => true,
-                        'parent' => 'woocommerce_action',
-                        'filter_value' => 'create_post',
-                    ),
-                    'woocommerce_tags_input' => array(
-                        'name' => __( 'The post tags', 'super' ),
-                        'desc' => __( 'Post tags separated by comma', 'super' ),
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_tags_input', $settings['settings'], '' ),
-                        'filter' => true,
-                        'parent' => 'woocommerce_action',
-                        'filter_value' => 'create_post',
-                    ),
-                    'woocommerce_post_tag_taxonomy' => array(
-                        'name' => __( 'The tag taxonomy name (e.g: post_tag or product_tag)', 'super' ),
-                        'desc' => __( 'Required to connect the post to categories (if found)', 'super' ),
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_post_tag_taxonomy', $settings['settings'], '' ),
-                        'filter' => true,
-                        'parent' => 'woocommerce_action',
-                        'filter_value' => 'create_post',
-                    ),
-                    'woocommerce_post_format' => array(
-                        'name' => __( 'The post format (e.g: quote, gallery, audio etc.)', 'super' ),
-                        'desc' => __( 'Leave blank for no post format', 'super' ),
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_post_format', $settings['settings'], '' ),
-                        'filter' => true,
-                        'parent' => 'woocommerce_action',
-                        'filter_value' => 'create_post',
-                    ),
-                    'woocommerce_guid' => array(
-                        'name' => __( 'GUID', 'super' ),
-                        'desc' => __( 'Global Unique ID for referencing the post', 'super' ),
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_guid', $settings['settings'], '' ),
-                        'filter' => true,
-                        'parent' => 'woocommerce_action',
-                        'filter_value' => 'create_post',
-                    ),
-                    'woocommerce_product_type' => array(
-                        'name' => __( 'Product Type (e.g: simple, grouped, external, variable)', 'super' ),
-                        'desc' => __( 'Leave blank to use the default product type: simple', 'super' ),
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_product_type', $settings['settings'], '' ),
-                        'filter' => true,
-                        'parent' => 'woocommerce_post_type',
-                        'filter_value' => 'product',
-                    ),
-                    'woocommerce_product_featured' => array(
-                        'name' => __( 'Featured product', 'super' ),
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_product_featured', $settings['settings'], 'no' ),
-                        'type' => 'select',
-                        'values' => array(
-                            'no' => __( 'No (default)', 'super' ),
-                            'yes' => __( 'Yes', 'super' ),
-                        ),
-                        'filter' => true,
-                        'parent' => 'woocommerce_post_type',
-                        'filter_value' => 'product',
-                    ),
-                    'woocommerce_product_stock_status' => array(
-                        'name' => __( 'In stock?', 'super' ),
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_product_stock_status', $settings['settings'], 'yes' ),
-                        'type' => 'select',
-                        'values' => array(
-                            'instock' => __( 'In stock (default)', 'super' ),
-                            'outofstock' => __( 'Out of stock', 'super' ),
-                        ),
-                        'filter' => true,
-                        'parent' => 'woocommerce_post_type',
-                        'filter_value' => 'product',
-                    ),
-                    'woocommerce_product_manage_stock' => array(
-                        'name' => __( 'Manage stock?', 'super' ),
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_product_manage_stock', $settings['settings'], 'no' ),
-                        'type' => 'select',
-                        'values' => array(
-                            'no' => __( 'No (default)', 'super' ),
-                            'yes' => __( 'Yes', 'super' ),
-                        ),
-                        'filter' => true,
-                        'parent' => 'woocommerce_post_type',
-                        'filter_value' => 'product',
-                    ),
-                    'woocommerce_product_stock' => array(
-                        'name' => __( 'Stock Qty', 'super' ),
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_product_stock', $settings['settings'], '' ),
-                        'type' => 'slider',
-                        'min' => 0,
-                        'max' => 100,
-                        'steps' => 1,
-                        'filter' => true,
-                        'parent' => 'woocommerce_product_manage_stock',
-                        'filter_value' => 'yes',
-                    ),
-                    'woocommerce_product_backorders' => array(
-                        'name' => __( 'Allow Backorders?', 'super' ),
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_product_backorders', $settings['settings'], 'no' ),
-                        'type' => 'select',
-                        'values' => array(
-                            'no' => __( 'Do not allow (default)', 'super' ),
-                            'notify' => __( 'Allow, but notify customer', 'super' ),
-                            'yes' => __( 'Allow', 'super' ),
-                        ),
-                        'filter' => true,
-                        'parent' => 'woocommerce_product_manage_stock',
-                        'filter_value' => 'yes',
-                    ),
-                    'woocommerce_product_sold_individually' => array(
-                        'name' => __( 'Sold individually?', 'super' ),
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_product_sold_individually', $settings['settings'], 'no' ),
-                        'type' => 'select',
-                        'values' => array(
-                            'no' => __( 'No (default)', 'super' ),
-                            'yes' => __( 'Yes', 'super' ),
-                        ),
-                        'filter' => true,
-                        'parent' => 'woocommerce_post_type',
-                        'filter_value' => 'product',
-                    ),
-                    'woocommerce_product_downloadable' => array(
-                        'name' => __( 'Downloadable product', 'super' ),
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_product_downloadable', $settings['settings'], 'no' ),
-                        'type' => 'select',
-                        'values' => array(
-                            'no' => __( 'No (default)', 'super' ),
-                            'yes' => __( 'Yes', 'super' ),
-                        ),
-                        'filter' => true,
-                        'parent' => 'woocommerce_post_type',
-                        'filter_value' => 'product',
-                    ),
-                    'woocommerce_product_virtual' => array(
-                        'name' => __( 'Virtual product', 'super' ),
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_product_virtual', $settings['settings'], 'no' ),
-                        'type' => 'select',
-                        'values' => array(
-                            'no' => __( 'No (default)', 'super' ),
-                            'yes' => __( 'Yes', 'super' ),
-                        ),
-                        'filter' => true,
-                        'parent' => 'woocommerce_post_type',
-                        'filter_value' => 'product',
-                    ),
-                    'woocommerce_product_visibility' => array(
-                        'name' => __( 'Product visibility', 'super' ),
-                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_product_visibility', $settings['settings'], 'visible' ),
-                        'type' => 'select',
-                        'values' => array(
-                            'visible' => __( 'Catalog & search (default)', 'super' ),
-                            'catalog' => __( 'Catalog', 'super' ),
-                            'search' => __( 'Search', 'super' ),
-                            'hidden' => __( 'Hidden', 'super' ),
-                        ),
-                        'filter' => true,
-                        'parent' => 'woocommerce_post_type',
-                        'filter_value' => 'product',
-                    )
-                )
-            );
-
-            return $array;
-            */
         }
-
-
-
     }
         
 endif;
