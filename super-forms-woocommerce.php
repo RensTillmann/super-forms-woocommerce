@@ -176,9 +176,12 @@ if(!class_exists('SUPER_WooCommerce')) :
          public static function add_entry_order_link( $result, $data ) {
             $order_id = get_post_meta( $data['entry_id'], '_super_contact_entry_wc_order_id', true );
             if ( ! empty( $order_id ) ) {
-                $result .= '<tr><th align="right">' . __( 'WooCommerce Order', 'super-forms' ) . ':</th><td><span class="super-contact-entry-data-value">';
-                $result .= '<a href="' . get_admin_url() . 'post.php?post=' . $order_id . '&action=edit">' . get_the_title( $order_id ) . '</a>';
-                $result .= '</span></td></tr>';
+                $order_id = absint($order_id);
+                if( $order_id!=0 ) {
+                    $result .= '<tr><th align="right">' . __( 'WooCommerce Order', 'super-forms' ) . ':</th><td><span class="super-contact-entry-data-value">';
+                    $result .= '<a href="' . get_admin_url() . 'post.php?post=' . $order_id . '&action=edit">' . get_the_title( $order_id ) . '</a>';
+                    $result .= '</span></td></tr>';
+                }
             }
             return $result;
         }
@@ -196,6 +199,8 @@ if(!class_exists('SUPER_WooCommerce')) :
             if( $post_type=='super_contact_entry' ) {
                 global $woocommerce;
                 $woocommerce->session->set( '_super_entry_id', array( 'entry_id'=>$data['entry_id'] ) );
+            }else{
+                $woocommerce->session->set( '_super_entry_id', array() );
             }
         }
 
