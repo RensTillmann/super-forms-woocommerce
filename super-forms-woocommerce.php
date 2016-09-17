@@ -133,6 +133,10 @@ if(!class_exists('SUPER_WooCommerce')) :
             add_action( 'woocommerce_order_status_completed', array( $this, 'order_status_completed' ) );
             add_action( 'woocommerce_order_status_changed', array( $this, 'order_status_changed' ), 1, 3 );
 
+            add_action( 'super_after_saving_contact_entry_action', array( $this, 'set_contact_entry_order_id_session' ), 10, 3 );
+
+            add_filter( 'super_after_contact_entry_data_filter', array( $this, 'add_entry_order_link' ), 10, 2 );
+
 
             if ( $this->is_request( 'frontend' ) ) {
                 
@@ -161,6 +165,38 @@ if(!class_exists('SUPER_WooCommerce')) :
 
             }
             
+        }
+
+
+        /**
+         * Add the WC Order link to the entry info/data page
+         * 
+         * @since       1.0.0
+        */
+         public static function add_entry_order_link( $result, $data ) {
+            $order_id = get_post_meta( $data['entry_id'], '_super_contact_entry_wc_order_id', true );
+            if ( ! empty( $order_id ) ) {
+                $result .= '<tr><th align="right">' . __( 'WooCommerce Order', 'super-forms' ) . ':</th><td><span class="super-contact-entry-data-value">';
+                $result .= '<a href="' . get_admin_url() . 'post.php?post=' . $order_id . '&action=edit">' . get_the_title( $order_id ) . '</a>';
+                $result .= '</span></td></tr>';
+            }
+            return $result;
+        }
+
+
+        /**
+         * Save contact entry ID to session
+         * 
+         * @since       1.0.0
+        */
+        function set_contact_entry_order_id_session( $data ) {
+            $post_type = get_post_type( $data['entry_id'] );
+
+            // Check if post_type is super_contact_entry 
+            if( $post_type=='super_contact_entry' ) {
+                global $woocommerce;
+                $woocommerce->session->set( '_super_entry_id', array( 'entry_id'=>$data['entry_id'] ) );
+            }
         }
 
 
@@ -243,6 +279,10 @@ if(!class_exists('SUPER_WooCommerce')) :
 
             $_super_wc_signup = $woocommerce->session->get( '_super_wc_signup', array() );
             update_post_meta( $order_id, '_super_wc_signup', $_super_wc_signup );
+
+            $_super_entry_id = $woocommerce->session->get( '_super_entry_id', array() );
+            update_post_meta( $_super_entry_id['entry_id'], '_super_contact_entry_wc_order_id', $order_id );
+
         }
 
 
