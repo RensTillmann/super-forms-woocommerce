@@ -1,16 +1,16 @@
 <?php
 /**
- * Super Forms WooCommerce
+ * Super Forms WooCommerce Checkout
  *
- * @package   Super Forms WooCommerce
+ * @package   Super Forms WooCommerce Checkout
  * @author    feeling4design
  * @link      http://codecanyon.net/item/super-forms-drag-drop-form-builder/13979866
  * @copyright 2015 by feeling4design
  *
  * @wordpress-plugin
- * Plugin Name: Super Forms WooCommerce
+ * Plugin Name: Super Forms WooCommerce Checkout
  * Plugin URI:  http://codecanyon.net/item/super-forms-drag-drop-form-builder/13979866
- * Description: Checkout with WooCommerce after form submission
+ * Description: Checkout with WooCommerce after form submission. Charge user for registering or posting content.
  * Version:     1.0.0
  * Author:      feeling4design
  * Author URI:  http://codecanyon.net/user/feeling4design
@@ -122,6 +122,9 @@ if(!class_exists('SUPER_WooCommerce')) :
         private function init_hooks() {
             
             add_action( 'super_front_end_posting_after_insert_post_action', array( $this, 'save_wc_order_post_session_data' ) );
+            add_action( 'super_after_wp_insert_user_action', array( $this, 'save_wc_order_signup_session_data' ) );
+
+
             add_action( 'woocommerce_checkout_update_order_meta', array( $this, 'update_order_meta' ) );
 
 
@@ -187,19 +190,44 @@ if(!class_exists('SUPER_WooCommerce')) :
         */
         function save_wc_order_post_session_data( $data ) {
             global $woocommerce;
-            $post_id = absint($data['post_id']);
-            $settings = $data['atts']['settings'];
 
-            // Check if Front-end Posting is activated
+            // Check if Front-end Posting add-on is activated
             if ( class_exists( 'SUPER_Frontend_Posting' ) ) {
-                if( $settings['frontend_posting_action']=='create_post' ) {
-                    $woocommerce->session->set( '_super_wc_post', array( 'id'=>$post_id, 'status'=>$settings['woocommerce_post_status'] ) );
+                $post_id = absint($data['post_id']);
+                $settings = $data['atts']['settings'];
+                if( (isset($settings['frontend_posting_action']) ) && ($settings['frontend_posting_action']=='create_post') ) {
+                    $woocommerce->session->set( '_super_wc_post', array( 'post_id'=>$post_id, 'status'=>$settings['woocommerce_post_status'] ) );
                 }else{
                     $woocommerce->session->set( '_super_wc_post', array() );
                 }
             }else{
                 $woocommerce->session->set( '_super_wc_post', array() );
             }
+
+        }
+
+
+        /**
+         * If Register & Login add-on is activated and being used retrieve the created User ID and save it to the WC Order
+         *
+         *  @since      1.0.0
+        */
+        function save_wc_order_signup_session_data( $data ) {
+            global $woocommerce;
+
+            // Check if Register & Login add-on is activated
+            if ( class_exists( 'SUPER_Register_Login' ) ) {
+                $user_id = absint($data['user_id']);
+                $settings = $data['atts']['settings'];
+                if( (isset($settings['register_login_action']) ) && ($settings['register_login_action']=='register') ) {
+                    $woocommerce->session->set( '_super_wc_signup', array( 'user_id'=>$user_id, 'status'=>$settings['woocommerce_signup_status'] ) );
+                }else{
+                    $woocommerce->session->set( '_super_wc_signup', array() );
+                }
+            }else{
+                $woocommerce->session->set( '_super_wc_signup', array() );
+            }
+
         }
 
 
@@ -212,6 +240,9 @@ if(!class_exists('SUPER_WooCommerce')) :
             global $woocommerce;
             $_super_wc_post = $woocommerce->session->get( '_super_wc_post', array() );
             update_post_meta( $order_id, '_super_wc_post', $_super_wc_post );
+
+            $_super_wc_signup = $woocommerce->session->get( '_super_wc_signup', array() );
+            update_post_meta( $order_id, '_super_wc_signup', $_super_wc_signup );
         }
 
 
@@ -253,12 +284,17 @@ if(!class_exists('SUPER_WooCommerce')) :
         */
         public function order_status_changed( $order_id, $old_status, $new_status ) {
             if( $new_status=='completed' ) {
+                
                 $_super_wc_post = get_post_meta( $order_id, '_super_wc_post', true );
                 $my_post = array(
-                    'ID' => $_super_wc_post['id'],
+                    'ID' => $_super_wc_post['post_id'],
                     'post_status' => $_super_wc_post['status'],
                 );
                 wp_update_post( $my_post );
+
+                $_super_wc_signup = get_post_meta( $order_id, '_super_wc_signup', true );
+                update_user_meta( $_super_wc_signup['user_id'], 'super_user_login_status', $_super_wc_signup['status'] );
+
             }
         }
 
@@ -414,18 +450,6 @@ if(!class_exists('SUPER_WooCommerce')) :
                 // Add fee
                 if( (isset($settings['woocommerce_checkout_fees'])) && ($settings['woocommerce_checkout_fees']!='') ) {
                     
-                    // $name
-                    // ( string ) required – Unique name for the fee. Multiple fees of the same name cannot be added.
-
-                    // $amount
-                    // ( float ) required – Fee amount.
-
-                    // $taxable
-                    // ( bool ) optional – (default: false) Is the fee taxable?
-
-                    // $tax_class
-                    // ( string ) optional – (default: '') The tax class for the fee if taxable. A blank string is standard tax class.
-
                     $fees = array();
                     $woocommerce_checkout_fees = explode( "\n", $settings['woocommerce_checkout_fees'] );  
                     foreach( $woocommerce_checkout_fees as $k => $v ) {
@@ -440,10 +464,10 @@ if(!class_exists('SUPER_WooCommerce')) :
                         if( isset( $fee[3] ) ) $tax_class = SUPER_Common::email_tags( $fee[3], $data, $settings );
                         if( $amount>0 ) {
                             $fees[] = array(
-                                'name' => $name,
-                                'amount' => $amount,
-                                'taxable' => $taxable,
-                                'tax_class' => $tax_class,
+                                'name' => $name,            // ( string ) required – Unique name for the fee. Multiple fees of the same name cannot be added.
+                                'amount' => $amount,        // ( float ) required – Fee amount.
+                                'taxable' => $taxable,      // ( bool ) optional – (default: false) Is the fee taxable?
+                                'tax_class' => $tax_class,  // ( string ) optional – (default: '') The tax class for the fee if taxable. A blank string is standard tax class.
                             );
                         }
                     }
@@ -454,21 +478,6 @@ if(!class_exists('SUPER_WooCommerce')) :
 
                 // Now add the product(s) to the cart
                 foreach( $products as $k => $v ) {
-
-                    // $product_id
-                    // ( int ) optional – contains the id of the product to add to the cart
-
-                    // $quantity
-                    // ( int ) optional default: 1 – contains the quantity of the item to add
-
-                    // $variation_id
-                    // ( int ) optional –
-
-                    // $variation
-                    // ( array ) optional – attribute values
-
-                    // $cart_item_data
-                    // ( array ) optional – extra cart item data we want to pass into the item
 
                     if( class_exists('WC_Name_Your_Price_Helpers') ) {
                         $posted_nyp_field = 'nyp' . apply_filters( 'nyp_field_prefix', '', $v['id'] );
@@ -485,7 +494,13 @@ if(!class_exists('SUPER_WooCommerce')) :
                             }
                         }
                     }
-                    $woocommerce->cart->add_to_cart( $v['id'], $v['quantity'], $v['variation_id'], $new_attributes );
+                    $woocommerce->cart->add_to_cart(
+                        $v['id'],               // ( int ) optional – contains the id of the product to add to the cart
+                        $v['quantity'],         // ( int ) optional default: 1 – contains the quantity of the item to add
+                        $v['variation_id'],     // ( int ) optional –
+                        $new_attributes         // ( array ) optional – attribute values
+                                                // ( array ) optional – extra cart item data we want to pass into the item
+                    );
 
                 }
 
@@ -595,7 +610,7 @@ if(!class_exists('SUPER_WooCommerce')) :
                         'values' => array(
                             'checkout' => __( 'Checkout page (default)', 'super-forms' ),
                             'cart' => __( 'Shopping Cart', 'super-forms' ),
-                            'none' => __( 'None (no redirect)', 'super-forms' ),
+                            'none' => __( 'None (use the form redirect)', 'super-forms' ),
                         ),
                         'filter' => true,
                         'parent' => 'woocommerce_checkout',
@@ -603,6 +618,7 @@ if(!class_exists('SUPER_WooCommerce')) :
                     ),
                 )
             );
+
             if ( class_exists( 'SUPER_Frontend_Posting' ) ) {
                 $array['woocommerce_checkout']['fields']['woocommerce_post_status'] = array(
                     'name' => __( 'Post status after payment complete', 'super' ),
@@ -623,6 +639,24 @@ if(!class_exists('SUPER_WooCommerce')) :
                     'filter_value' => 'true',
                 );
             }
+
+            if ( class_exists( 'SUPER_Register_Login' ) ) {
+                $array['woocommerce_checkout']['fields']['woocommerce_signup_status'] = array(
+                    'name' => __( 'Registered user login status after payment complete', 'super' ),
+                    'desc' => __( 'Only used for Register & Login add-on (active, pending, blocked)?', 'super' ),
+                    'default' => SUPER_Settings::get_value( 0, 'woocommerce_signup_status', $settings['settings'], 'active' ),
+                    'type' => 'select',
+                    'values' => array(
+                        'active' => __( 'Active (default)', 'super' ),
+                        'pending' => __( 'Pending', 'super' ),
+                        'blocked' => __( 'Blocked', 'super' ),
+                    ),
+                    'filter' => true,
+                    'parent' => 'woocommerce_checkout',
+                    'filter_value' => 'true',
+                );
+            }
+
             return $array;
         }
     }
