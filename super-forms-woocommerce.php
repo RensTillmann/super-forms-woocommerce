@@ -580,6 +580,7 @@ if(!class_exists('SUPER_WooCommerce')) :
         */
         public static function add_settings( $array, $settings ) {
             $array['woocommerce_checkout'] = array(        
+                'hidden' => 'settings',
                 'name' => __( 'WooCommerce Checkout', 'super' ),
                 'label' => __( 'WooCommerce Checkout', 'super' ),
                 'fields' => array(
