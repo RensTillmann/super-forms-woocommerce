@@ -1,2 +1,5 @@
+Sep 28, 2016 - Version 1.0.1
+- Fix: parameter $data for woocommerce_checkout_update_order_meta hook
+
 Sep 21, 2016 - Version 1.0.0
 - Initial release!

@@ -11,7 +11,7 @@
  * Plugin Name: Super Forms WooCommerce Checkout
  * Plugin URI:  http://codecanyon.net/item/super-forms-drag-drop-form-builder/13979866
  * Description: Checkout with WooCommerce after form submission. Charge user for registering or posting content.
- * Version:     1.0.0
+ * Version:     1.0.1
  * Author:      feeling4design
  * Author URI:  http://codecanyon.net/user/feeling4design
 */
@@ -36,7 +36,7 @@ if(!class_exists('SUPER_WooCommerce')) :
          *
          *	@since		1.0.0
         */
-        public $version = '1.0.0';
+        public $version = '1.0.1';
 
         
         /**
@@ -125,7 +125,7 @@ if(!class_exists('SUPER_WooCommerce')) :
             add_action( 'super_after_wp_insert_user_action', array( $this, 'save_wc_order_signup_session_data' ) );
 
 
-            add_action( 'woocommerce_checkout_update_order_meta', array( $this, 'update_order_meta' ) );
+            add_action( 'woocommerce_checkout_update_order_meta', array( $this, 'update_order_meta' ), 10, 1 );
 
 
             add_action( 'woocommerce_checkout_order_processed', array( $this, 'woocommerce_checkout_order_processed' ) );
@@ -277,7 +277,7 @@ if(!class_exists('SUPER_WooCommerce')) :
          * 
          * @since       1.0.0
         */
-        public static function update_order_meta( $order_id, $data ) {
+        public static function update_order_meta( $order_id) {
             global $woocommerce;
             $_super_wc_post = $woocommerce->session->get( '_super_wc_post', array() );
             update_post_meta( $order_id, '_super_wc_post', $_super_wc_post );
