@@ -11,7 +11,7 @@
  * Plugin Name: Super Forms WooCommerce Checkout
  * Plugin URI:  http://codecanyon.net/item/super-forms-drag-drop-form-builder/13979866
  * Description: Checkout with WooCommerce after form submission. Charge user for registering or posting content.
- * Version:     1.0.1
+ * Version:     1.0.2
  * Author:      feeling4design
  * Author URI:  http://codecanyon.net/user/feeling4design
 */
@@ -36,7 +36,7 @@ if(!class_exists('SUPER_WooCommerce')) :
          *
          *	@since		1.0.0
         */
-        public $version = '1.0.1';
+        public $version = '1.0.2';
 
         
         /**
@@ -121,22 +121,18 @@ if(!class_exists('SUPER_WooCommerce')) :
         */
         private function init_hooks() {
             
+            // Filters since 1.0.0
+            add_filter( 'super_after_contact_entry_data_filter', array( $this, 'add_entry_order_link' ), 10, 2 );
+
+            // Actions since 1.0.0
             add_action( 'super_front_end_posting_after_insert_post_action', array( $this, 'save_wc_order_post_session_data' ) );
             add_action( 'super_after_wp_insert_user_action', array( $this, 'save_wc_order_signup_session_data' ) );
-
-
             add_action( 'woocommerce_checkout_update_order_meta', array( $this, 'update_order_meta' ), 10, 1 );
-
-
             add_action( 'woocommerce_checkout_order_processed', array( $this, 'woocommerce_checkout_order_processed' ) );
             add_action( 'woocommerce_payment_complete_order_status', array( $this, 'payment_complete_order_status' ) );
             add_action( 'woocommerce_order_status_completed', array( $this, 'order_status_completed' ) );
             add_action( 'woocommerce_order_status_changed', array( $this, 'order_status_changed' ), 1, 3 );
-
             add_action( 'super_after_saving_contact_entry_action', array( $this, 'set_contact_entry_order_id_session' ), 10, 3 );
-
-            add_filter( 'super_after_contact_entry_data_filter', array( $this, 'add_entry_order_link' ), 10, 2 );
-
 
             if ( $this->is_request( 'frontend' ) ) {
                 
@@ -193,14 +189,16 @@ if(!class_exists('SUPER_WooCommerce')) :
          * @since       1.0.0
         */
         function set_contact_entry_order_id_session( $data ) {
-            $post_type = get_post_type( $data['entry_id'] );
+            if ( class_exists( 'WooCommerce' ) ) {
+                $post_type = get_post_type( $data['entry_id'] );
 
-            // Check if post_type is super_contact_entry 
-            if( $post_type=='super_contact_entry' ) {
+                // Check if post_type is super_contact_entry 
                 global $woocommerce;
-                $woocommerce->session->set( '_super_entry_id', array( 'entry_id'=>$data['entry_id'] ) );
-            }else{
-                $woocommerce->session->set( '_super_entry_id', array() );
+                if( $post_type=='super_contact_entry' ) {
+                    $woocommerce->session->set( '_super_entry_id', array( 'entry_id'=>$data['entry_id'] ) );
+                }else{
+                    $woocommerce->session->set( '_super_entry_id', array() );
+                }
             }
         }
 
@@ -329,17 +327,17 @@ if(!class_exists('SUPER_WooCommerce')) :
         */
         public function order_status_changed( $order_id, $old_status, $new_status ) {
             if( $new_status=='completed' ) {
-                
                 $_super_wc_post = get_post_meta( $order_id, '_super_wc_post', true );
-                $my_post = array(
-                    'ID' => $_super_wc_post['post_id'],
-                    'post_status' => $_super_wc_post['status'],
-                );
-                wp_update_post( $my_post );
+                if ( !empty( $_super_wc_post ) ) { // @since 1.0.2 - check if not empty
+                    $my_post = array(
+                        'ID' => $_super_wc_post['post_id'],
+                        'post_status' => $_super_wc_post['status'],
+                    );
+                    wp_update_post( $my_post );
 
-                $_super_wc_signup = get_post_meta( $order_id, '_super_wc_signup', true );
-                update_user_meta( $_super_wc_signup['user_id'], 'super_user_login_status', $_super_wc_signup['status'] );
-
+                    $_super_wc_signup = get_post_meta( $order_id, '_super_wc_signup', true );
+                    update_user_meta( $_super_wc_signup['user_id'], 'super_user_login_status', $_super_wc_signup['status'] );
+                }
             }
         }
 
