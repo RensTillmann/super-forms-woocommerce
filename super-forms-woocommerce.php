@@ -1,17 +1,17 @@
 <?php
 /**
- * Super Forms WooCommerce Checkout
+ * Super Forms - WooCommerce Checkout
  *
- * @package   Super Forms WooCommerce Checkout
+ * @package   Super Forms - WooCommerce Checkout
  * @author    feeling4design
  * @link      http://codecanyon.net/item/super-forms-drag-drop-form-builder/13979866
  * @copyright 2015 by feeling4design
  *
  * @wordpress-plugin
- * Plugin Name: Super Forms WooCommerce Checkout
+ * Plugin Name: Super Forms - WooCommerce Checkout
  * Plugin URI:  http://codecanyon.net/item/super-forms-drag-drop-form-builder/13979866
- * Description: Checkout with WooCommerce after form submission. Charge user for registering or posting content.
- * Version:     1.0.2
+ * Description: Checkout with WooCommerce after form submission. Charge users for registering or posting content.
+ * Version:     1.1.0
  * Author:      feeling4design
  * Author URI:  http://codecanyon.net/user/feeling4design
 */
@@ -36,9 +36,18 @@ if(!class_exists('SUPER_WooCommerce')) :
          *
          *	@since		1.0.0
         */
-        public $version = '1.0.2';
+        public $version = '1.1.0';
 
-        
+
+        /**
+         * @var string
+         *
+         *  @since      1.1.0
+        */
+        public $add_on_slug = 'woocommerce_checkout';
+        public $add_on_name = 'WooCommerce Checkout';
+
+
         /**
          * @var SUPER_WooCommerce The single instance of the class
          *
@@ -121,6 +130,12 @@ if(!class_exists('SUPER_WooCommerce')) :
         */
         private function init_hooks() {
             
+            // @since 1.1.0
+            register_deactivation_hook( __FILE__, array( $this, 'deactivate' ) );
+            // Filters since 1.1.0
+            add_filter( 'super_after_activation_message_filter', array( $this, 'activation_message' ), 10, 2 );
+
+
             // Filters since 1.0.0
             add_filter( 'super_after_contact_entry_data_filter', array( $this, 'add_entry_order_link' ), 10, 2 );
 
@@ -129,10 +144,16 @@ if(!class_exists('SUPER_WooCommerce')) :
             add_action( 'super_after_wp_insert_user_action', array( $this, 'save_wc_order_signup_session_data' ) );
             add_action( 'woocommerce_checkout_update_order_meta', array( $this, 'update_order_meta' ), 10, 1 );
             add_action( 'woocommerce_checkout_order_processed', array( $this, 'woocommerce_checkout_order_processed' ) );
-            add_action( 'woocommerce_payment_complete_order_status', array( $this, 'payment_complete_order_status' ) );
+
+            // @deprecated since 1.0.2
+            //add_action( 'woocommerce_payment_complete_order_status', array( $this, 'payment_complete_order_status' ) );
+            
             add_action( 'woocommerce_order_status_completed', array( $this, 'order_status_completed' ) );
             add_action( 'woocommerce_order_status_changed', array( $this, 'order_status_changed' ), 1, 3 );
             add_action( 'super_after_saving_contact_entry_action', array( $this, 'set_contact_entry_order_id_session' ), 10, 3 );
+
+
+
 
             if ( $this->is_request( 'frontend' ) ) {
                 
@@ -148,7 +169,11 @@ if(!class_exists('SUPER_WooCommerce')) :
                 // Filters since 1.0.0
                 add_filter( 'super_settings_after_smtp_server_filter', array( $this, 'add_settings' ), 10, 2 );
 
-                // Actions since 1.0.0
+                // Filters since 1.1.0
+                add_filter( 'super_settings_end_filter', array( $this, 'activation' ), 100, 2 );
+                
+                // Actions since 1.1.0
+                add_action( 'init', array( $this, 'update_plugin' ) );
 
             }
             
@@ -161,6 +186,67 @@ if(!class_exists('SUPER_WooCommerce')) :
 
             }
             
+        }
+
+
+        /**
+         * Automatically update plugin from the repository
+         *
+         *  @since      1.1.0
+        */
+        function update_plugin() {
+            if( defined('SUPER_PLUGIN_DIR') ) {
+                require_once ( SUPER_PLUGIN_DIR . '/includes/admin/update-super-forms.php' );
+                $plugin_remote_path = 'http://f4d.nl/super-forms/';
+                $plugin_slug = plugin_basename( __FILE__ );
+                new SUPER_WP_AutoUpdate( $this->version, $plugin_remote_path, $plugin_slug, '', '', $this->add_on_slug );
+            }
+        }
+
+
+        /**
+         * Add the activation under the "Activate" TAB
+         * 
+         * @since       1.3.0
+        */
+        public function activation($array, $data) {
+            if (method_exists('SUPER_Forms','add_on_activation')) {
+                return SUPER_Forms::add_on_activation($array, $this->add_on_slug, $this->add_on_name);
+            }else{
+                return $array;
+            }
+        }
+
+
+        /**  
+         *  Deactivate
+         *
+         *  Upon plugin deactivation delete activation
+         *
+         *  @since      1.3.0
+         */
+        public static function deactivate(){
+            if (method_exists('SUPER_Forms','add_on_deactivate')) {
+                SUPER_Forms::add_on_deactivate(SUPER_Calculator()->add_on_slug);
+            }
+        }
+
+
+        /**
+         * Check license and show activation message
+         * 
+         * @since       1.3.0
+        */
+        public function activation_message( $activation_msg, $data ) {
+            if (method_exists('SUPER_Forms','add_on_activation_message')) {
+                $form_id = absint($data['id']);
+                $settings = $data['settings'];
+                if( (isset($settings['woocommerce_checkout'])) && ($settings['woocommerce_checkout']=='true') ) {
+                    return SUPER_Forms::add_on_activation_message($activation_msg, $this->add_on_slug, $this->add_on_name);
+                }
+            }else{
+                return $activation_msg;
+            }
         }
 
 
@@ -358,7 +444,7 @@ if(!class_exists('SUPER_WooCommerce')) :
                     $data = $atts['post']['data'];
                 }
             }
-            if($settings['woocommerce_checkout']=='true') {
+            if( (isset($settings['woocommerce_checkout'])) && ($settings['woocommerce_checkout']=='true') ) {
 
                 // No products defined to add to cart!
                 if( (!isset($settings['woocommerce_checkout_products'])) || (empty($settings['woocommerce_checkout_products'])) ) {
