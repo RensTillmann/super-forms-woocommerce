@@ -227,7 +227,7 @@ if(!class_exists('SUPER_WooCommerce')) :
          */
         public static function deactivate(){
             if (method_exists('SUPER_Forms','add_on_deactivate')) {
-                SUPER_Forms::add_on_deactivate(SUPER_Calculator()->add_on_slug);
+                SUPER_Forms::add_on_deactivate(SUPER_WooCommerce()->add_on_slug);
             }
         }
 
