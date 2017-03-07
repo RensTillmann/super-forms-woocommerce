@@ -207,7 +207,7 @@ if(!class_exists('SUPER_WooCommerce')) :
         /**
          * Add the activation under the "Activate" TAB
          * 
-         * @since       1.3.0
+         * @since       1.1.0
         */
         public function activation($array, $data) {
             if (method_exists('SUPER_Forms','add_on_activation')) {
@@ -223,7 +223,7 @@ if(!class_exists('SUPER_WooCommerce')) :
          *
          *  Upon plugin deactivation delete activation
          *
-         *  @since      1.3.0
+         *  @since      1.1.0
          */
         public static function deactivate(){
             if (method_exists('SUPER_Forms','add_on_deactivate')) {
@@ -235,7 +235,7 @@ if(!class_exists('SUPER_WooCommerce')) :
         /**
          * Check license and show activation message
          * 
-         * @since       1.3.0
+         * @since       1.1.0
         */
         public function activation_message( $activation_msg, $data ) {
             if (method_exists('SUPER_Forms','add_on_activation_message')) {
@@ -244,9 +244,8 @@ if(!class_exists('SUPER_WooCommerce')) :
                 if( (isset($settings['woocommerce_checkout'])) && ($settings['woocommerce_checkout']=='true') ) {
                     return SUPER_Forms::add_on_activation_message($activation_msg, $this->add_on_slug, $this->add_on_name);
                 }
-            }else{
-                return $activation_msg;
             }
+            return $activation_msg;
         }
 
 
