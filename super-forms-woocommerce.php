@@ -11,7 +11,7 @@
  * Plugin Name: Super Forms - WooCommerce Checkout
  * Plugin URI:  http://codecanyon.net/item/super-forms-drag-drop-form-builder/13979866
  * Description: Checkout with WooCommerce after form submission. Charge users for registering or posting content.
- * Version:     1.1.0
+ * Version:     1.2.0
  * Author:      feeling4design
  * Author URI:  http://codecanyon.net/user/feeling4design
 */
@@ -36,7 +36,7 @@ if(!class_exists('SUPER_WooCommerce')) :
          *
          *	@since		1.0.0
         */
-        public $version = '1.1.0';
+        public $version = '1.2.0';
 
 
         /**
@@ -129,15 +129,17 @@ if(!class_exists('SUPER_WooCommerce')) :
          *	@since		1.0.0
         */
         private function init_hooks() {
-            
+
             // @since 1.1.0
             register_deactivation_hook( __FILE__, array( $this, 'deactivate' ) );
             // Filters since 1.1.0
             add_filter( 'super_after_activation_message_filter', array( $this, 'activation_message' ), 10, 2 );
 
-
             // Filters since 1.0.0
             add_filter( 'super_after_contact_entry_data_filter', array( $this, 'add_entry_order_link' ), 10, 2 );
+
+            // Filters since 1.2.0
+            add_filter( 'super_countries_list_filter', array( $this, 'return_wc_countries' ), 10, 2 );
 
             // Actions since 1.0.0
             add_action( 'super_front_end_posting_after_insert_post_action', array( $this, 'save_wc_order_post_session_data' ) );
@@ -152,15 +154,13 @@ if(!class_exists('SUPER_WooCommerce')) :
             add_action( 'woocommerce_order_status_changed', array( $this, 'order_status_changed' ), 1, 3 );
             add_action( 'super_after_saving_contact_entry_action', array( $this, 'set_contact_entry_order_id_session' ), 10, 3 );
 
-
-
-
             if ( $this->is_request( 'frontend' ) ) {
-                
-                // Filters since 1.0.0
 
                 // Actions since 1.0.0
                 add_action( 'woocommerce_cart_calculate_fees', array( $this, 'additional_shipping_costs' ), 5 );
+
+                // Filters since 1.2.0
+                add_filter( 'woocommerce_checkout_get_value', array( $this, 'populate_billing_field_values' ), 10, 2 );
 
             }
             
@@ -250,11 +250,73 @@ if(!class_exists('SUPER_WooCommerce')) :
 
 
         /**
+         * Return WC countries list for billing_country and shipping_country only
+         *
+         *  @since      1.2.0
+        */
+        public function return_wc_countries($countries, $data) {
+            if( (class_exists('WC_Countries')) && ($data['settings']['woocommerce_checkout']=='true') && ( ($data['name']=='billing_country') || ($data['name']=='shipping_country') ) ) {
+                $countries_obj = new WC_Countries();
+                $countries = $countries_obj->__get('countries');
+                return $countries;
+            }
+            return $countries;
+        }
+
+        /**
+         * Auto popuplate field with form data value
+         * 
+         * @since       1.2.0
+        */
+        public static function populate_billing_field_values( $value, $input ) {
+            global $woocommerce;
+            $v = $woocommerce->session->get('_super_form_data', array() );
+            if( (isset($v[$input])) && (isset($v[$input]['value'])) ) return $v[$input]['value'];
+            $input = str_replace('billing_', '', $input);
+            if( (isset($v[$input])) && (isset($v[$input]['value'])) ) return $v[$input]['value'];
+            if($input=='address_1'){
+                if( (isset($v['address'])) && (isset($v['address']['value'])) ) return $v['address']['value'];
+            }
+            return $value;
+        }
+        
+        /**
+         * Change required fields on checkout page (for future reference if we will implement this feature anytime soon)
+         * 
+         * @since       1.2.0
+        */     
+        /*
+        add_filter( 'woocommerce_billing_fields', array( $this, 'wc_required_fields' ), 10, 1 );
+        public static function wc_required_fields( $address_fields ) {
+            $fields = array(
+                'first_name' => array( 'required'=>false, 'validate'=>false ),
+                'last_name' => array( 'required'=>false, 'validate'=>false ),
+                'company' => array( 'required'=>false, 'validate'=>false ),
+                'email' => array( 'required'=>false, 'validate'=>false ),
+                'phone' => array( 'required'=>false, 'validate'=>false ),
+                'country' => array( 'required'=>false, 'validate'=>false ),
+                'address_1' => array( 'required'=>false, 'validate'=>false ),
+                'address_2' => array( 'required'=>false, 'validate'=>false ),
+                'city' => array( 'required'=>false, 'validate'=>false ),
+                'state' => array( 'required'=>false, 'validate'=>false ),
+                'postcode' => array( 'required'=>false, 'validate'=>false )
+            );
+            foreach($fields as $k => $v){
+                $address_fields['billing_'.$k]['required'] = $v['required'];
+                $address_fields['billing_'.$k]['validate'] = $v['validate'];
+                //unset($address_fields['billing_phone']['validate']);
+            }
+            return $address_fields;
+        }
+        */
+
+
+        /**
          * Add the WC Order link to the entry info/data page
          * 
          * @since       1.0.0
         */
-         public static function add_entry_order_link( $result, $data ) {
+        public static function add_entry_order_link( $result, $data ) {
             $order_id = get_post_meta( $data['entry_id'], '_super_contact_entry_wc_order_id', true );
             if ( ! empty( $order_id ) ) {
                 $order_id = absint($order_id);
@@ -634,6 +696,7 @@ if(!class_exists('SUPER_WooCommerce')) :
 
                 // Redirect to cart / checkout page
                 if( isset($settings['woocommerce_redirect']) ) {
+                    $woocommerce->session->set( '_super_form_data', $data ); // @since 1.2.0 - save data to session for billing fields
                     $redirect = null;
                     if( $settings['woocommerce_redirect']=='checkout' ) {
                         $redirect = $woocommerce->cart->get_checkout_url();
