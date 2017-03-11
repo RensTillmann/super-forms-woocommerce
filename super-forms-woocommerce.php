@@ -255,7 +255,7 @@ if(!class_exists('SUPER_WooCommerce')) :
          *  @since      1.2.0
         */
         public function return_wc_countries($countries, $data) {
-            if( (class_exists('WC_Countries')) && ($data['settings']['woocommerce_checkout']=='true') && ( ($data['name']=='billing_country') || ($data['name']=='shipping_country') ) ) {
+            if( (class_exists('WC_Countries')) && (isset($data['settings']['woocommerce_checkout'])) && ($data['settings']['woocommerce_checkout']=='true') && ( ($data['name']=='billing_country') || ($data['name']=='shipping_country') ) ) {
                 $countries_obj = new WC_Countries();
                 $countries = $countries_obj->__get('countries');
                 return $countries;
@@ -280,12 +280,39 @@ if(!class_exists('SUPER_WooCommerce')) :
             return $value;
         }
         
+
         /**
          * Change required fields on checkout page (for future reference if we will implement this feature anytime soon)
          * 
          * @since       1.2.0
         */     
         /*
+
+        add_filter( 'woocommerce_checkout_fields' , 'f4d_remove_checkout_fields' );
+        function f4d_remove_checkout_fields( $fields ) {
+            $billing_fields = array(
+                'first_name' => array( 'required'=>false, 'validate'=>false ),
+                'last_name' => array( 'required'=>false, 'validate'=>false ),
+                'company' => array( 'required'=>false, 'validate'=>false ),
+                'email' => array( 'required'=>false, 'validate'=>false ),
+                'phone' => array( 'required'=>false, 'validate'=>false ),
+                'country' => array( 'required'=>false, 'validate'=>false ),
+                'address_1' => array( 'required'=>false, 'validate'=>false ),
+                'address_2' => array( 'required'=>false, 'validate'=>false ),
+                'city' => array( 'required'=>false, 'validate'=>false ),
+                'state' => array( 'required'=>false, 'validate'=>false ),
+                'postcode' => array( 'required'=>false, 'validate'=>false )
+            );
+            foreach( $billing_fields as $k => $v ) {
+                unset($fields['billing']['billing_' . $k]);
+            }
+            unset($fields['order']['order_comments']);
+            unset($fields['account']['account_username']);
+            unset($fields['account']['account_password']);
+            unset($fields['account']['account_password-2']); 
+            return $fields;
+        }
+
         add_filter( 'woocommerce_billing_fields', array( $this, 'wc_required_fields' ), 10, 1 );
         public static function wc_required_fields( $address_fields ) {
             $fields = array(
