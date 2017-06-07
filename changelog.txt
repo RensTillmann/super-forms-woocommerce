@@ -1,3 +1,6 @@
+Jun, 07, 2017 - Version 1.2.1
+- Fix: Issue with formatting checkout price with WC_Name_Your_Price_Helpers::standardize_number() function
+
 Mar, 10, 2017 - Version 1.2.0
 - Improved: Populate billing fields on checkout pages with form fields based on names that start with billing_
 - Improved: Retrieve WC countries on country field if named billing_country or shipping_country
