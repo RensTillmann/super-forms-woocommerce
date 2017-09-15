@@ -11,7 +11,7 @@
  * Plugin Name: Super Forms - WooCommerce Checkout
  * Plugin URI:  http://codecanyon.net/item/super-forms-drag-drop-form-builder/13979866
  * Description: Checkout with WooCommerce after form submission. Charge users for registering or posting content.
- * Version:     1.2.1
+ * Version:     1.2.2
  * Author:      feeling4design
  * Author URI:  http://codecanyon.net/user/feeling4design
 */
@@ -36,7 +36,7 @@ if(!class_exists('SUPER_WooCommerce')) :
          *
          *	@since		1.0.0
         */
-        public $version = '1.2.1';
+        public $version = '1.2.2';
 
 
         /**
@@ -162,6 +162,9 @@ if(!class_exists('SUPER_WooCommerce')) :
                 // Filters since 1.2.0
                 add_filter( 'woocommerce_checkout_get_value', array( $this, 'populate_billing_field_values' ), 10, 2 );
 
+                // Filters since 1.2.2
+                add_filter( 'woocommerce_checkout_fields' , array( $this, 'custom_override_checkout_fields' ) );
+
             }
             
             if ( $this->is_request( 'admin' ) ) {
@@ -175,6 +178,9 @@ if(!class_exists('SUPER_WooCommerce')) :
                 // Actions since 1.1.0
                 add_action( 'init', array( $this, 'update_plugin' ) );
 
+                // Actions since 1.2.2        
+                add_action( 'woocommerce_admin_order_data_after_shipping_address', array( $this, 'checkout_field_display_admin_order_meta' ), 10, 1 );
+
             }
             
             if ( $this->is_request( 'ajax' ) ) {
@@ -186,6 +192,52 @@ if(!class_exists('SUPER_WooCommerce')) :
 
             }
             
+        }
+
+        
+        /**
+         * Add additional checkout fields
+         * 
+         * @since       1.2.2
+        */
+        function custom_override_checkout_fields( $fields ) {
+            $custom_fields = SUPER_Forms()->session->get( '_super_wc_custom_fields' );
+            foreach( $custom_fields as $k => $v ) {
+                $fields[$v['section']][$v['name']] = array(
+                    'label' => $v['label'],
+                    'placeholder' => $v['placeholder'],
+                    'type' => $v['type'],
+                    'required' => ($v['required']=='true' ? true : false),
+                    'clear' => ($v['clear']=='true' ? true : false),
+                    'class' => array( $v['class'] ),
+                    'label_class' => array( $v['label_class'] )
+                );
+                if( $v['type']=='select' ) {
+                    $array = array();
+                    $options =  explode( ";", $v['options'] );
+                    foreach( $options as $ok => $ov ) {
+                        $values = explode( ",", $ov );
+                        $value = $values[0];
+                        $label = $values[1];
+                        $array[$value] = $label;
+                    }
+                    $fields[$v['section']][$v['name']]['options'] = $array;
+                }
+            }
+            return $fields;
+        }
+
+
+        /**
+         * Add additional shipping costs
+         * 
+         * @since       1.2.2
+        */
+        function checkout_field_display_admin_order_meta( $order ){
+            $custom_fields = get_post_meta( $order->get_id(), '_super_wc_custom_fields', true );
+            foreach( $custom_fields as $k => $v ) {
+                echo '<p><strong>' . $v['label'] . ':</strong> ' . get_post_meta( $order->get_id(), $v['name'], true ) . '</p>';
+            }
         }
 
 
@@ -384,8 +436,9 @@ if(!class_exists('SUPER_WooCommerce')) :
         */
         function additional_shipping_costs( ) {
             global $woocommerce;
-            if( isset( $_SESSION['_super_wc_fee'] ) ) {
-                foreach( $_SESSION['_super_wc_fee'] as $k => $v ) {
+            $_super_wc_fee = SUPER_Forms()->session->get( '_super_wc_fee' );
+            if( $_super_wc_fee!=false ) {
+                foreach( $_super_wc_fee as $k => $v ) {
                     if( $v['amount']>0 ) {
                         $woocommerce->cart->add_fee( $v['name'], $v['amount'], false, '' );
                     }else{
@@ -449,7 +502,21 @@ if(!class_exists('SUPER_WooCommerce')) :
          * 
          * @since       1.0.0
         */
-        public static function update_order_meta( $order_id) {
+        public static function update_order_meta( $order_id ) {
+
+            // @since 1.2.2 - save the custom fields to the order, so we can retrieve it in back-end for later use
+            $custom_fields = SUPER_Forms()->session->get( '_super_wc_custom_fields' );
+            update_post_meta( $order_id, '_super_wc_custom_fields', $custom_fields );
+            foreach( $custom_fields as $k => $v ) {
+                if ( !empty($_POST[$v['name']]) ) {
+                    update_post_meta( $order_id, $v['name'], sanitize_text_field( $_POST[$v['name']] ) );
+                }
+            }
+            
+            // @since 1.2.2 - save entry data to the order
+            $data = SUPER_Forms()->session->get( '_super_wc_entry_data' );
+            update_post_meta( $order_id, '_super_wc_entry_data', $data );
+
             global $woocommerce;
             $_super_wc_post = $woocommerce->session->get( '_super_wc_post', array() );
             update_post_meta( $order_id, '_super_wc_post', $_super_wc_post );
@@ -532,7 +599,14 @@ if(!class_exists('SUPER_WooCommerce')) :
                     $data = $atts['post']['data'];
                 }
             }
+
+            // @since 1.2.2 - first reset order entry data
+            SUPER_Forms()->session->set( '_super_wc_entry_data', false );
+
             if( (isset($settings['woocommerce_checkout'])) && ($settings['woocommerce_checkout']=='true') ) {
+
+                // @since 1.2.2 - save the entry data to the order
+                SUPER_Forms()->session->set( '_super_wc_entry_data', $data );
 
                 // No products defined to add to cart!
                 if( (!isset($settings['woocommerce_checkout_products'])) || (empty($settings['woocommerce_checkout_products'])) ) {
@@ -661,12 +735,11 @@ if(!class_exists('SUPER_WooCommerce')) :
                 // Delete any fees
                 if( (isset($settings['woocommerce_checkout_remove_fees'])) && ($settings['woocommerce_checkout_remove_fees']=='true') ) {
                     $woocommerce->session->set( 'fees', array() );
-                    unset($_SESSION['_super_wc_fee']);
+                    SUPER_Forms()->session->set( '_super_wc_fee', false );
                 }
 
                 // Add fee
                 if( (isset($settings['woocommerce_checkout_fees'])) && ($settings['woocommerce_checkout_fees']!='') ) {
-                    
                     $fees = array();
                     $woocommerce_checkout_fees = explode( "\n", $settings['woocommerce_checkout_fees'] );  
                     foreach( $woocommerce_checkout_fees as $k => $v ) {
@@ -688,8 +761,66 @@ if(!class_exists('SUPER_WooCommerce')) :
                             );
                         }
                     }
-                    $_SESSION['_super_wc_fee'] = $fees;
+                    SUPER_Forms()->session->set( '_super_wc_fee', $fees );
                 }
+
+                // @since 1.2.2 - Add custom checkout fields
+                if( (isset($settings['woocommerce_checkout_fields'])) && ($settings['woocommerce_checkout_fields']!='') ) {
+                    $fields = array();
+                    $woocommerce_checkout_fields = explode( "\n", $settings['woocommerce_checkout_fields'] );  
+                    foreach( $woocommerce_checkout_fields as $k => $v ) {
+                        $field =  explode( "|", $v );
+                        if( !isset( $field[0] ) ) {
+                            continue; 
+                        }
+                        $name = '';
+                        $value = '';
+                        $label = '';
+                        $placeholder = '';
+                        $type = 'text';
+                        $section = 'billing';
+                        $required = 'true';
+                        $clear = 'true';
+                        $class = 'super-checkout-custom';
+                        $label_class = 'super-checkout-custom-label';
+                        $options = 'red,Red;blue,Blue;green,Green';
+                        if( isset( $field[0] ) ) $name = SUPER_Common::email_tags( $field[0], $data, $settings );
+                        if( isset( $field[1] ) ) $value = SUPER_Common::email_tags( $field[1], $data, $settings );
+                        if( isset( $field[2] ) ) $label = SUPER_Common::email_tags( $field[2], $data, $settings );
+                        if( isset( $field[3] ) ) $placeholder = SUPER_Common::email_tags( $field[3], $data, $settings );
+                        if( isset( $field[4] ) ) $type = SUPER_Common::email_tags( $field[4], $data, $settings );
+                        if( isset( $field[5] ) ) $section = SUPER_Common::email_tags( $field[5], $data, $settings );
+                        if( isset( $field[6] ) ) $required = SUPER_Common::email_tags( $field[6], $data, $settings );
+                        if( isset( $field[7] ) ) $clear = SUPER_Common::email_tags( $field[7], $data, $settings );
+                        if( isset( $field[8] ) ) $class = SUPER_Common::email_tags( $field[8], $data, $settings );
+                        if( isset( $field[9] ) ) $label_class = SUPER_Common::email_tags( $field[9], $data, $settings );
+                        if( isset( $field[10] ) ) $options = SUPER_Common::email_tags( $field[10], $data, $settings );
+
+
+                        // Only add the field if the field name was visible in the form itself
+                        if( (isset($settings['woocommerce_checkout_fields_skip_empty'])) && ($settings['woocommerce_checkout_fields_skip_empty']=='true') ) {
+                            if( !isset($data[$name]) ) {
+                                continue;
+                            }
+                        }
+
+                        $fields[] = array(
+                            'name' => $name,
+                            'value' => $value,
+                            'label' => $label,
+                            'placeholder' => $placeholder,
+                            'type' => $type,
+                            'section' => $section,
+                            'required' => $required,
+                            'clear' => $clear,
+                            'class' => $class,
+                            'label_class' => $label_class,
+                            'options' => $options
+                        );
+                    }
+                    SUPER_Forms()->session->set( '_super_wc_custom_fields', $fields );
+                }
+
 
                 global $wpdb;
 
@@ -823,6 +954,44 @@ if(!class_exists('SUPER_WooCommerce')) :
                         'parent' => 'woocommerce_checkout',
                         'filter_value' => 'true',
                     ),
+
+                    // @since 1.2.2 - add custom checkout fields to checkout page
+                    'woocommerce_checkout_fields' => array(
+                        'name' => __( 'Add custom checkout field(s)', 'super-forms' ) . '<br /><i>' . __( 'Put each field on a new line with field options seperated by pipes "|".', 'super-forms' ) . '</i><br />',
+                        'label' => 'Example:<br />billing_custom|{billing_custom}|Billing custom|This is a custom field|text|billing|true|true|super-billing-custom|super-billing-custom-label|red,Red;blue,Blue;green,Green<br /><strong>Available field options:</strong><br /><strong>name</strong> - the field name<br /><strong>value</strong> - the field value ({tags} can be used here)<br /><strong>label</strong> – label for the input field<br /><strong>placeholder</strong> – placeholder for the input<br /><strong>type</strong> – type of field (text, textarea, password, select)<br /><strong>section</strong> - billing, shipping, account, order<br /><strong>required</strong> – true or false, whether or not the field is require<br /><strong>clear</strong> – true or false, applies a clear fix to the field/label<br /><strong>class</strong> – class for the input<br /><strong>label_class</strong> – class for the label element<br /><strong>options</strong> – for select boxes, array of options (key => value pairs)',
+                        'desc' => __( 'Leave blank for no custom fields', 'super-forms' ),
+                        'type' => 'textarea',
+                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_checkout_fields', $settings['settings'], "" ),
+                        'filter' => true,
+                        'parent' => 'woocommerce_checkout',
+                        'filter_value' => 'true',
+                        /*
+                        name            value              label          placeholder         type section  req. clear.       class              label class           options for select boxes
+                        billing_custom|{billing_custom}|Billing custom|This is a custom field|text|billing||true|true|super-billing-custom|super-billing-custom-label|red,Red;blue,Blue;green,Green
+                        <strong>name</strong> - the field name<br />
+                        <strong>value</strong> - the field value ({tags} can be used here)<br />
+                        <strong>label</strong> – label for the input field<br />
+                        <strong>placeholder</strong> – placeholder for the input<br />
+                        <strong>type</strong> – type of field (text, textarea, password, select)<br />
+                        <strong>section</strong> - billing, shipping, account, order<br />
+                        <strong>required</strong> – true or false, whether or not the field is require<br />
+                        <strong>clear</strong> – true or false, applies a clear fix to the field/label<br />
+                        <strong>class</strong> – class for the input<br />
+                        <strong>label_class</strong> – class for the label element<br />
+                        <strong>options</strong> – for select boxes, array of options (key => value pairs)
+                        */
+                    ),
+                    'woocommerce_checkout_fields_skip_empty' => array(
+                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_checkout_fields_skip_empty', $settings['settings'], '' ),
+                        'type' => 'checkbox',
+                        'values' => array(
+                            'true' => __( 'Only add custom field if field exists in form and not conditionally hidden', 'super-forms' ),
+                        ),
+                        'filter' => true,
+                        'parent' => 'woocommerce_checkout',
+                        'filter_value' => 'true',
+                    ),
+
                     'woocommerce_redirect' => array(
                         'name' => __( 'Redirect to Checkout page or Shopping Cart?', 'super-forms' ),
                         'default' => SUPER_Settings::get_value( 0, 'woocommerce_redirect', $settings['settings'], 'checkout' ),

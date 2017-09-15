@@ -1,3 +1,6 @@
+Sep, 15, 2017 - Version 1.2.2
+- Added: Option to add custom checkout fields to checkout page
+
 Jun, 07, 2017 - Version 1.2.1
 - Fix: Issue with formatting checkout price with WC_Name_Your_Price_Helpers::standardize_number() function.
 
