@@ -11,7 +11,7 @@
  * Plugin Name: Super Forms - WooCommerce Checkout
  * Plugin URI:  http://codecanyon.net/item/super-forms-drag-drop-form-builder/13979866
  * Description: Checkout with WooCommerce after form submission. Charge users for registering or posting content.
- * Version:     1.3.0
+ * Version:     1.3.1
  * Author:      feeling4design
  * Author URI:  http://codecanyon.net/user/feeling4design
 */
@@ -36,7 +36,7 @@ if(!class_exists('SUPER_WooCommerce')) :
          *
          *	@since		1.0.0
         */
-        public $version = '1.3.0';
+        public $version = '1.3.1';
 
 
         /**
@@ -222,26 +222,28 @@ if(!class_exists('SUPER_WooCommerce')) :
         */
         function custom_override_checkout_fields( $fields ) {
             $custom_fields = SUPER_Forms()->session->get( '_super_wc_custom_fields' );
-            foreach( $custom_fields as $k => $v ) {
-                $fields[$v['section']][$v['name']] = array(
-                    'label' => $v['label'],
-                    'placeholder' => $v['placeholder'],
-                    'type' => $v['type'],
-                    'required' => ($v['required']=='true' ? true : false),
-                    'clear' => ($v['clear']=='true' ? true : false),
-                    'class' => array( $v['class'] ),
-                    'label_class' => array( $v['label_class'] )
-                );
-                if( $v['type']=='select' ) {
-                    $array = array();
-                    $options =  explode( ";", $v['options'] );
-                    foreach( $options as $ok => $ov ) {
-                        $values = explode( ",", $ov );
-                        $value = $values[0];
-                        $label = $values[1];
-                        $array[$value] = $label;
+            if( is_array($custom_fields) ) {
+                foreach( $custom_fields as $k => $v ) {
+                    $fields[$v['section']][$v['name']] = array(
+                        'label' => $v['label'],
+                        'placeholder' => $v['placeholder'],
+                        'type' => $v['type'],
+                        'required' => ($v['required']=='true' ? true : false),
+                        'clear' => ($v['clear']=='true' ? true : false),
+                        'class' => array( $v['class'] ),
+                        'label_class' => array( $v['label_class'] )
+                    );
+                    if( $v['type']=='select' ) {
+                        $array = array();
+                        $options =  explode( ";", $v['options'] );
+                        foreach( $options as $ok => $ov ) {
+                            $values = explode( ",", $ov );
+                            $value = $values[0];
+                            $label = $values[1];
+                            $array[$value] = $label;
+                        }
+                        $fields[$v['section']][$v['name']]['options'] = $array;
                     }
-                    $fields[$v['section']][$v['name']]['options'] = $array;
                 }
             }
             return $fields;
