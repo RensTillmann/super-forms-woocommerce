@@ -271,8 +271,10 @@ if(!class_exists('SUPER_WooCommerce')) :
         */
         function checkout_field_display_admin_order_meta( $order ){
             $custom_fields = get_post_meta( $order->get_id(), '_super_wc_custom_fields', true );
-            foreach( $custom_fields as $k => $v ) {
-                echo '<p><strong>' . $v['label'] . ':</strong> ' . get_post_meta( $order->get_id(), $v['name'], true ) . '</p>';
+            if( is_array($custom_fields) ) {
+                foreach( $custom_fields as $k => $v ) {
+                    echo '<p><strong>' . $v['label'] . ':</strong> ' . get_post_meta( $order->get_id(), $v['name'], true ) . '</p>';
+                }
             }
         }
 
