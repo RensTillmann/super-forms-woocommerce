@@ -218,14 +218,6 @@ if(!class_exists('SUPER_WooCommerce')) :
                     echo '</p>';
                 echo '</div>';
             }
-            $sac = get_option( 'sac_' . $this->add_on_slug, 0 );
-            if( $sac!=1 ) {
-                echo '<div class="notice notice-error">'; // notice-success
-                    echo '<p>';
-                    echo sprintf( __( '%sPlease note:%s You are missing out on important updates for %s! Please %sactivate your copy%s to receive automatic updates.', 'super_forms' ), '<strong>', '</strong>', 'Super Forms - ' . $this->add_on_name, '<a href="' . admin_url() . 'admin.php?page=super_settings#activate">', '</a>' );
-                    echo '</p>';
-                echo '</div>';
-            }
         }
 
         
@@ -286,13 +278,10 @@ if(!class_exists('SUPER_WooCommerce')) :
         */
         function update_plugin() {
             if( defined('SUPER_PLUGIN_DIR') ) {
-                $sac = get_option( 'sac_' . $this->add_on_slug, 0 );
-                if( $sac==1 ) {
-                    require_once ( SUPER_PLUGIN_DIR . '/includes/admin/update-super-forms.php' );
-                    $plugin_remote_path = 'http://f4d.nl/super-forms/';
-                    $plugin_slug = plugin_basename( __FILE__ );
-                    new SUPER_WP_AutoUpdate( $this->version, $plugin_remote_path, $plugin_slug, '', '', $this->add_on_slug );
-                }
+                require_once ( SUPER_PLUGIN_DIR . '/includes/admin/update-super-forms.php' );
+                $plugin_remote_path = 'http://f4d.nl/super-forms/';
+                $plugin_slug = plugin_basename( __FILE__ );
+                new SUPER_WP_AutoUpdate( $this->version, $plugin_remote_path, $plugin_slug, '', '', $this->add_on_slug );
             }
         }
 
