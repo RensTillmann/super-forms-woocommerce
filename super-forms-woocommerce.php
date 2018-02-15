@@ -36,7 +36,7 @@ if(!class_exists('SUPER_WooCommerce')) :
          *
          *	@since		1.0.0
         */
-        public $version = '1.3.2';
+        public $version = '1.3.3';
 
 
         /**
