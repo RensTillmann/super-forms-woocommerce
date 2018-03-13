@@ -154,6 +154,10 @@ if(!class_exists('SUPER_WooCommerce')) :
             add_action( 'woocommerce_order_status_changed', array( $this, 'order_status_changed' ), 1, 3 );
             add_action( 'super_after_saving_contact_entry_action', array( $this, 'set_contact_entry_order_id_session' ), 10, 3 );
 
+
+            add_action('woocommerce_new_order_item', array( $this, 'add_order_item_meta' ), 10, 3);
+
+
             if ( $this->is_request( 'frontend' ) ) {
 
                 // Actions since 1.0.0
@@ -197,6 +201,14 @@ if(!class_exists('SUPER_WooCommerce')) :
             
         }
 
+        public function add_order_item_meta( $item_id, $values, $cart_item_key ) {
+            global $woocommerce;
+            foreach ( $woocommerce->cart->get_cart() as $cart_item_key => $cart_item ) {
+                foreach( $cart_item['super_data'] as $k => $v ) {
+                    wc_add_order_item_meta( $item_id, $k, $v );
+                }
+            } 
+        }
 
         /**
          * Display activation message for automatic updates
@@ -536,10 +548,14 @@ if(!class_exists('SUPER_WooCommerce')) :
 
             // @since 1.2.2 - save the custom fields to the order, so we can retrieve it in back-end for later use
             $custom_fields = SUPER_Forms()->session->get( '_super_wc_custom_fields' );
-            update_post_meta( $order_id, '_super_wc_custom_fields', $custom_fields );
-            foreach( $custom_fields as $k => $v ) {
-                if ( !empty($_POST[$v['name']]) ) {
-                    update_post_meta( $order_id, $v['name'], sanitize_text_field( $_POST[$v['name']] ) );
+            if( !empty($custom_fields) ) {
+                update_post_meta( $order_id, '_super_wc_custom_fields', $custom_fields );
+                if( is_array($custom_fields) ) {
+                    foreach( $custom_fields as $k => $v ) {
+                        if ( !empty($_POST[$v['name']]) ) {
+                            update_post_meta( $order_id, $v['name'], sanitize_text_field( $_POST[$v['name']] ) );
+                        }
+                    }
                 }
             }
             
@@ -555,8 +571,9 @@ if(!class_exists('SUPER_WooCommerce')) :
             update_post_meta( $order_id, '_super_wc_signup', $_super_wc_signup );
 
             $_super_entry_id = $woocommerce->session->get( '_super_entry_id', array() );
-            update_post_meta( $_super_entry_id['entry_id'], '_super_contact_entry_wc_order_id', $order_id );
-
+            if( isset($_super_entry_id['entry_id']) ) {
+                update_post_meta( $_super_entry_id['entry_id'], '_super_contact_entry_wc_order_id', $order_id );
+            }
         }
 
 
@@ -873,14 +890,17 @@ if(!class_exists('SUPER_WooCommerce')) :
                             }
                         }
                     }
-                    $woocommerce->cart->add_to_cart(
+                    $cart_item_key = $woocommerce->cart->add_to_cart(
                         $v['id'],               // ( int ) optional – contains the id of the product to add to the cart
                         $v['quantity'],         // ( int ) optional default: 1 – contains the quantity of the item to add
                         $v['variation_id'],     // ( int ) optional –
-                        $new_attributes         // ( array ) optional – attribute values
-                                                // ( array ) optional – extra cart item data we want to pass into the item
+                        $new_attributes,        // ( array ) optional – attribute values
+                        array(                  // ( array ) optional – extra cart item data we want to pass into the item
+                            'super_data' => array(
+                                'fav_color' => 'Orange'
+                            )
+                        )
                     );
-
                 }
 
                 // Redirect to cart / checkout page
