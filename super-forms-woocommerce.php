@@ -11,13 +11,13 @@
  * Plugin Name: Super Forms - WooCommerce Checkout
  * Plugin URI:  http://codecanyon.net/item/super-forms-drag-drop-form-builder/13979866
  * Description: Checkout with WooCommerce after form submission. Charge users for registering or posting content.
- * Version:     1.3.3
+ * Version:     1.3.4
  * Author:      feeling4design
  * Author URI:  http://codecanyon.net/user/feeling4design
 */
 
 if ( ! defined( 'ABSPATH' ) ) {
-	exit; // Exit if accessed directly
+    exit; // Exit if accessed directly
 }
 
 if(!class_exists('SUPER_WooCommerce')) :
@@ -34,9 +34,9 @@ if(!class_exists('SUPER_WooCommerce')) :
         /**
          * @var string
          *
-         *	@since		1.0.0
+         *  @since      1.0.0
         */
-        public $version = '1.3.3';
+        public $version = '1.3.4';
 
 
         /**
@@ -51,7 +51,7 @@ if(!class_exists('SUPER_WooCommerce')) :
         /**
          * @var SUPER_WooCommerce The single instance of the class
          *
-         *	@since		1.0.0
+         *  @since      1.0.0
         */
         protected static $_instance = null;
 
@@ -65,7 +65,7 @@ if(!class_exists('SUPER_WooCommerce')) :
          * @see SUPER_WooCommerce()
          * @return SUPER_WooCommerce - Main instance
          *
-         *	@since		1.0.0
+         *  @since      1.0.0
         */
         public static function instance() {
             if(is_null( self::$_instance)){
@@ -78,7 +78,7 @@ if(!class_exists('SUPER_WooCommerce')) :
         /**
          * SUPER_WooCommerce Constructor.
          *
-         *	@since		1.0.0
+         *  @since      1.0.0
         */
         public function __construct(){
             $this->init_hooks();
@@ -92,7 +92,7 @@ if(!class_exists('SUPER_WooCommerce')) :
          * @param  string $name
          * @param  string|bool $value
          *
-         *	@since		1.0.0
+         *  @since      1.0.0
         */
         private function define($name, $value){
             if(!defined($name)){
@@ -107,7 +107,7 @@ if(!class_exists('SUPER_WooCommerce')) :
          * string $type ajax, frontend or admin
          * @return bool
          *
-         *	@since		1.0.0
+         *  @since      1.0.0
         */
         private function is_request($type){
             switch ($type){
@@ -126,7 +126,7 @@ if(!class_exists('SUPER_WooCommerce')) :
         /**
          * Hook into actions and filters
          *
-         *	@since		1.0.0
+         *  @since      1.0.0
         */
         private function init_hooks() {
 
@@ -154,8 +154,9 @@ if(!class_exists('SUPER_WooCommerce')) :
             add_action( 'woocommerce_order_status_changed', array( $this, 'order_status_changed' ), 1, 3 );
             add_action( 'super_after_saving_contact_entry_action', array( $this, 'set_contact_entry_order_id_session' ), 10, 3 );
 
-
-            add_action('woocommerce_new_order_item', array( $this, 'add_order_item_meta' ), 10, 3);
+            // @since 1.3.4 - custom product meta data
+            add_action( 'woocommerce_new_order_item', array( $this, 'add_order_item_meta' ), 10, 3);
+            add_filter( 'woocommerce_get_item_data', array( $this, 'display_product_meta_data_frontend' ), 10, 2 );
 
 
             if ( $this->is_request( 'frontend' ) ) {
@@ -201,14 +202,41 @@ if(!class_exists('SUPER_WooCommerce')) :
             
         }
 
+
+        /**
+         * Display custom product meta data on Cart and Checkout pages
+         *
+         *  @since      1.3.4
+        */
+        public function display_product_meta_data_frontend( $item_data, $cart_item ) {
+            if( isset($cart_item['super_data']) ) {
+                foreach($cart_item['super_data'] as $k => $v){
+                    $item_data[] = array( 
+                        'name' =>  $k,
+                        'value' => $v
+                    );
+                }
+            }
+            return $item_data;
+        }
+
+
+        /**
+         * Add custom product meta data
+         *
+         *  @since      1.3.4
+        */
         public function add_order_item_meta( $item_id, $values, $cart_item_key ) {
             global $woocommerce;
-            foreach ( $woocommerce->cart->get_cart() as $cart_item_key => $cart_item ) {
-                foreach( $cart_item['super_data'] as $k => $v ) {
-                    wc_add_order_item_meta( $item_id, $k, $v );
+            foreach ( $woocommerce->cart->get_cart() as $k => $v ) {
+                if( $k==$values->legacy_cart_item_key ) {
+                    foreach( $v['super_data'] as $k => $v ) {
+                        wc_add_order_item_meta( $item_id, $k, $v );
+                    }
                 }
             } 
         }
+
 
         /**
          * Display activation message for automatic updates
@@ -631,6 +659,100 @@ if(!class_exists('SUPER_WooCommerce')) :
 
 
         /**
+         * Loop through {tags} for custom product meta data in case dynamic column is used
+         *
+         *  @since      1.3.4
+        */
+        public static function new_wc_checkout_products_meta( $products_tags_meta, $i, $looped, $product, $id, $meta_key, $meta_value ){
+            if( !in_array($i, $looped) ) {
+                $new_line = '';
+
+                // Get the product ID tag
+                if( $product[0][0]=='{' ) { 
+                    $new_line .= '{' . $id . '_' . $i . '}'; 
+                }else{ 
+                    $new_line .= $product[0]; 
+                }
+
+                // Get the meta key tag
+                if( $product[1][0]=='{' ) { 
+                    $new_line .= '|{' . $meta_key . '_' . $i . '}'; 
+                }else{ 
+                    if(!empty($product[1])) $new_line .= '|' . $product[1]; 
+                }
+
+                // Get the meta value tag
+                if( $product[2][0]=='{' ) { 
+                    $new_line .= '|{' . $meta_value . '_' . $i . '}'; 
+                }else{ 
+                    if(!empty($product[2])) $new_line .= '|' . $product[2]; 
+                }
+
+                $looped[$i] = $i;
+                $i++;
+                return array(
+                    'i'=>$i, 
+                    'looped'=>$looped, 
+                    'products_tags_meta'=>$new_line 
+                );
+            }else{
+                return false;
+            }
+        }
+
+
+        /**
+         * Loop through {tags} if dynamic column is used
+         *
+         *  @since      1.3.4
+        */
+        public static function new_wc_checkout_products( $products_tags, $i, $looped, $product, $id, $quantity, $variation, $price ){
+            if(!in_array($i, $looped)){
+                $new_line = '';
+            
+                // Get the product ID tag
+                if( $product[0][0]=='{' ) { 
+                    $new_line .= '{' . $id . '_' . $i . '}'; 
+                }else{ 
+                    $new_line .= $product[0]; 
+                }
+
+                // Get the product quantity tag
+                if( $product[1][0]=='{' ) { 
+                    $new_line .= '|{' . $quantity . '_' . $i . '}'; 
+                }else{ 
+                    if(!empty($product[1])) $new_line .= '|' . $product[1]; 
+                }
+
+                // Get the product variation ID tag
+                if( $product[2][0]=='{' ) { 
+                    $new_line .= '|{' . $variation . '_' . $i . '}'; 
+                }else{ 
+                    if(!empty($product[2])) $new_line .= '|' . $product[2]; 
+                }
+
+                // Get the product price tag
+                if( $product[3][0]=='{' ) { 
+                    $new_line .= '|{' . $price . '_' . $i . '}'; 
+                }else{ 
+                    if(!empty($product[3])) $new_line .= '|' . $product[3]; 
+                }
+
+                $products_tags[] = $new_line;
+                $looped[$i] = $i;
+                $i++;
+                return array(
+                    'i'=>$i, 
+                    'looped'=>$looped, 
+                    'products_tags'=>$products_tags 
+                );
+            }else{
+                return false;
+            }
+        }
+
+
+        /**
          * Hook into before sending email and check if we need to create or update a post or taxonomy
          *
          *  @since      1.0.0
@@ -665,83 +787,61 @@ if(!class_exists('SUPER_WooCommerce')) :
                     );
                 }
 
-                $products = array();
-                $woocommerce_checkout_products = explode( "\n", $settings['woocommerce_checkout_products'] );  
-                $new_woocommerce_checkout_products = $woocommerce_checkout_products;
-                foreach( $woocommerce_checkout_products as $k => $v ) {
+                $checkout_products = explode( "\n", $settings['woocommerce_checkout_products'] );  
+                $products_tags = $checkout_products;
+                foreach( $checkout_products as $k => $v ) {
                     $product =  explode( "|", $v );
-                    if( isset( $product[0] ) ) $product_id_tag = trim($product[0], '{}');
-                    if( isset( $product[1] ) ) $product_quantity_tag = trim($product[1], '{}');
-                    if( isset( $product[2] ) ) $product_variation_id_tag = trim($product[2], '{}');
-                    if( isset( $product[3] ) ) $product_price_tag = trim($product[3], '{}');
-
+                    if( isset( $product[0] ) ) $id = trim($product[0], '{}');
+                    if( isset( $product[1] ) ) $quantity = trim($product[1], '{}');
+                    if( isset( $product[2] ) ) $variation = trim($product[2], '{}');
+                    if( isset( $product[3] ) ) $price = trim($product[3], '{}');
                     $looped = array();
                     $i=2;
-                    while( isset( $data[$product_id_tag . '_' . ($i)]) ) {
-                        if(!in_array($i, $looped)){
-                            $new_line = '';
-                            if( $product[0][0]=='{' ) { $new_line .= '{' . $product_id_tag . '_' . $i . '}'; }else{ $new_line .= $product[0]; }
-                            if( $product[1][0]=='{' ) { $new_line .= '|{' . $product_quantity_tag . '_' . $i . '}'; }else{ $new_line .= '|' . $product[1]; }
-                            if( $product[2][0]=='{' ) { $new_line .= '|{' . $product_variation_id_tag . '_' . $i . '}'; }else{ $new_line .= '|' . $product[2]; }
-                            if( $product[3][0]=='{' ) { $new_line .= '|{' . $product_price_tag . '_' . $i . '}'; }else{ $new_line .= '|' . $product[3]; }
-                            $new_woocommerce_checkout_products[] = $new_line;
-                            $looped[$i] = $i;
-                            $i++;
-                        }else{
-                            break;
-                        }
-                    }
-
-                    $i=2;
-                    while( isset( $data[$product_quantity_tag . '_' . ($i)]) ) {
-                        if(!in_array($i, $looped)){
-                            $new_line = '';
-                            if( $product[0][0]=='{' ) { $new_line .= '{' . $product_id_tag . '_' . $i . '}'; }else{ $new_line .= $product[0]; }
-                            if( $product[1][0]=='{' ) { $new_line .= '|{' . $product_quantity_tag . '_' . $i . '}'; }else{ $new_line .= '|' . $product[1]; }
-                            if( $product[2][0]=='{' ) { $new_line .= '|{' . $product_variation_id_tag . '_' . $i . '}'; }else{ $new_line .= '|' . $product[2]; }
-                            if( $product[3][0]=='{' ) { $new_line .= '|{' . $product_price_tag . '_' . $i . '}'; }else{ $new_line .= '|' . $product[3]; }
-                            $new_woocommerce_checkout_products[] = $new_line;
-                            $looped[$i] = $i;
-                            $i++;
-                        }else{
-                            break;
-                        }
-                    }
-
-                    $i=2;
-                    while( isset( $data[$product_variation_id_tag . '_' . ($i)]) ) {
-                        if(!in_array($i, $looped)){
-                            $new_line = '';
-                            if( $product[0][0]=='{' ) { $new_line .= '{' . $product_id_tag . '_' . $i . '}'; }else{ $new_line .= $product[0]; }
-                            if( $product[1][0]=='{' ) { $new_line .= '|{' . $product_quantity_tag . '_' . $i . '}'; }else{ $new_line .= '|' . $product[1]; }
-                            if( $product[2][0]=='{' ) { $new_line .= '|{' . $product_variation_id_tag . '_' . $i . '}'; }else{ $new_line .= '|' . $product[2]; }
-                            if( $product[3][0]=='{' ) { $new_line .= '|{' . $product_price_tag . '_' . $i . '}'; }else{ $new_line .= '|' . $product[3]; }
-                            $new_woocommerce_checkout_products[] = $new_line;
-                            $looped[$i] = $i;
-                            $i++;
-                        }else{
-                            break;
-                        }
-                    }
-
-                    $i=2;
-                    while( isset( $data[$product_price_tag . '_' . ($i)]) ) {
-                        if(!in_array($i, $looped)){
-                            $new_line = '';
-                            if( $product[0][0]=='{' ) { $new_line .= '{' . $product_id_tag . '_' . $i . '}'; }else{ $new_line .= $product[0]; }
-                            if( $product[1][0]=='{' ) { $new_line .= '|{' . $product_quantity_tag . '_' . $i . '}'; }else{ $new_line .= '|' . $product[1]; }
-                            if( $product[2][0]=='{' ) { $new_line .= '|{' . $product_variation_id_tag . '_' . $i . '}'; }else{ $new_line .= '|' . $product[2]; }
-                            if( $product[3][0]=='{' ) { $new_line .= '|{' . $product_price_tag . '_' . $i . '}'; }else{ $new_line .= '|' . $product[3]; }
-                            $new_woocommerce_checkout_products[] = $new_line;
-                            $looped[$i] = $i;
-                            $i++;
-                        }else{
-                            break;
-                        }
+                    while( isset( $data[$id . '_' . ($i)]) ) {
+                        $array = self::new_wc_checkout_products( $products_tags, $i, $looped, $product, $id, $quantity, $variation, $price );
+                        if($array==false) break;
+                        $i = $array['i'];
+                        $looped = $array['looped'];
+                        $products_tags = $array['products_tags'];
                     }
                 }
 
-                foreach( $new_woocommerce_checkout_products as $k => $v ) {
+                $woocommerce_checkout_products_meta = explode( "\n", $settings['woocommerce_checkout_products_meta'] );  
+                $meta = array();
+                foreach( $woocommerce_checkout_products_meta as $k => $v ) {
+                    $product =  explode( "|", $v );
+                    if( isset( $product[0] ) ) $id = trim($product[0], '{}');
+                    if( isset( $product[1] ) ) $meta_key = trim($product[1], '{}');
+                    if( isset( $product[2] ) ) $meta_value = trim($product[2], '{}');
+                    $meta[$id] = $woocommerce_checkout_products_meta;
+                    $looped = array();
+                    $i=2;
+                    while( isset( $data[$id . '_' . ($i)]) ) {
+                        $products_tags_meta = $woocommerce_checkout_products_meta;
+                        $array = self::new_wc_checkout_products_meta( $products_tags_meta, $i, $looped, $product, $id, $meta_key, $meta_value );
+                        if($array==false) break;
+                        $i = $array['i'];
+                        $looped = $array['looped'];
+                        $meta[$id . '_' . ($i-1)][] = $array['products_tags_meta'];
+                    }
+                }
+
+                $products_meta = array();
+                foreach( $meta as $mk => $mv ) {
+                    foreach( $mv as $k => $v ) {
+                        $meta_data =  explode( "|", $v );
+                        $product_id = 0;
+                        $meta_key = '';
+                        $meta_value = '';
+                        if( isset( $meta_data[0] ) ) $product_id = SUPER_Common::email_tags( $meta_data[0], $data, $settings );
+                        if( isset( $meta_data[1] ) ) $meta_key = SUPER_Common::email_tags( $meta_data[1], $data, $settings );
+                        if( isset( $meta_data[2] ) ) $meta_value = SUPER_Common::email_tags( $meta_data[2], $data, $settings );
+                        $products_meta[$mk][$meta_key] = $meta_value;
+                    }
+                }
+
+                $products = array();
+                foreach( $products_tags as $k => $v ) {
                     $product =  explode( "|", $v );
                     $product_id = 0;
                     $product_quantity = 0;
@@ -753,12 +853,20 @@ if(!class_exists('SUPER_WooCommerce')) :
                     if( isset( $product[3] ) ) $product_price = SUPER_Common::email_tags( $product[3], $data, $settings );
                     $product_quantity = absint($product_quantity);
                     if( $product_quantity>0 ) {
+                        $product_id = absint($product_id);
+                        $meta = array();
+                        $field_name = trim($product[0], '{}');
+                        if( isset($products_meta[$field_name]) ) {
+                            $meta = $products_meta[$field_name];
+                        }
                         $products[] = array(
-                            'id' => absint($product_id),
-                            'quantity' => absint($product_quantity),
+                            'id' => $product_id,
+                            'quantity' => $product_quantity,
                             'variation_id' => absint($product_variation_id),
                             'price' => $product_price,
+                            'super_data' => $meta
                         );
+
                     }
                 }
 
@@ -870,7 +978,7 @@ if(!class_exists('SUPER_WooCommerce')) :
 
 
                 global $wpdb;
-
+          
                 // Now add the product(s) to the cart
                 foreach( $products as $k => $v ) {
 
@@ -890,16 +998,18 @@ if(!class_exists('SUPER_WooCommerce')) :
                             }
                         }
                     }
+
+                    $super_data = array();
+                    if( isset($v['super_data']) ) {
+                        $super_data = array( 'super_data' => $v['super_data'] );
+                    }
+
                     $cart_item_key = $woocommerce->cart->add_to_cart(
                         $v['id'],               // ( int ) optional – contains the id of the product to add to the cart
                         $v['quantity'],         // ( int ) optional default: 1 – contains the quantity of the item to add
                         $v['variation_id'],     // ( int ) optional –
                         $new_attributes,        // ( array ) optional – attribute values
-                        array(                  // ( array ) optional – extra cart item data we want to pass into the item
-                            'super_data' => array(
-                                'fav_color' => 'Orange'
-                            )
-                        )
+                        $super_data             // ( array ) optional – extra cart item data we want to pass into the item
                     );
                 }
 
@@ -986,7 +1096,19 @@ if(!class_exists('SUPER_WooCommerce')) :
                         'filter_value' => 'true',
                         'allow_empty' => true,
                     ),
-               
+
+                    // @since 1.3.4 - custom product meta data
+                    'woocommerce_checkout_products_meta' => array(
+                        'name' => __( 'Enter the product(s) custom meta data (optional)', 'super-forms' ) . '<br /><i>' . __( 'If field is inside dynamic column, system will automatically add all the meta data. Put each product ID with it\'s meta data on a new line separated by pipes "|".<br /><strong>Example with tags:</strong> {id}|Color|{color}<br /><strong>Example without tags:</strong> 82921|Color|Red<br /><strong>Allowed values:</strong> integer|string|string.', 'super-forms' ) . '</i>',
+                        'desc' => __( 'Put each on a new line, {tags} can be used to retrieve data', 'super-forms' ),
+                        'type' => 'textarea',
+                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_checkout_products_meta', $settings['settings'], "{id}|Color|{color}" ),
+                        'filter' => true,
+                        'parent' => 'woocommerce_checkout',
+                        'filter_value' => 'true',
+                        'allow_empty' => true,
+                    ),
+
                     'woocommerce_checkout_coupon' => array(
                         'name' => __( 'Apply the following coupon code (leave blank for none):', 'super-forms' ),
                         'default' => SUPER_Settings::get_value( 0, 'woocommerce_checkout_coupon', $settings['settings'], '' ),
