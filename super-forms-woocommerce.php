@@ -11,7 +11,7 @@
  * Plugin Name: Super Forms - WooCommerce Checkout
  * Plugin URI:  http://codecanyon.net/item/super-forms-drag-drop-form-builder/13979866
  * Description: Checkout with WooCommerce after form submission. Charge users for registering or posting content.
- * Version:     1.3.5
+ * Version:     1.3.6
  * Author:      feeling4design
  * Author URI:  http://codecanyon.net/user/feeling4design
 */
@@ -36,7 +36,7 @@ if(!class_exists('SUPER_WooCommerce')) :
          *
          *  @since      1.0.0
         */
-        public $version = '1.3.5';
+        public $version = '1.3.6';
 
 
         /**
@@ -807,34 +807,42 @@ if(!class_exists('SUPER_WooCommerce')) :
                 }
 
                 $woocommerce_checkout_products_meta = explode( "\n", $settings['woocommerce_checkout_products_meta'] );  
+
                 $meta = array();
                 foreach( $woocommerce_checkout_products_meta as $k => $v ) {
                     $product =  explode( "|", $v );
                     
                     // @since 1.3.5 - do not add meta data to product if field was conditionally hidden or none existing (but only if {tag} was being used)
+                    // @since 1.3.5 - match all possible tags and check for each individual tag if it existed, if at least one existed do not unset the custom meta from array
+                    $regex = "/{(.*?)}/";
                     if( isset( $product[0] ) ) {
-                        if (preg_match("/{(.*?)}/", $product[0])) {
-                            $id = trim($product[0], '{}');
-                            if( !isset($data[$id]) ) {
-                                unset($woocommerce_checkout_products_meta[$k]);
+                        $match = preg_match_all($regex, $product[0], $matches, PREG_SET_ORDER, 0);
+                        if( $match ) {
+                            $found = false;
+                            foreach( $matches as $k => $v ) {
+                                if( isset($data[$v[1]]) ) $found = true;
                             }
+                            if( !$found ) unset($woocommerce_checkout_products_meta[$k]);
                         }
                     } 
                     if( isset( $product[1] ) ) {
-                        if (preg_match("/{(.*?)}/", $product[1])) {
-                            $meta_key = trim($product[1], '{}');
-                            if( !isset($data[$meta_key]) ) {
-                                unset($woocommerce_checkout_products_meta[$k]);
+                        $match = preg_match_all($regex, $product[1], $matches, PREG_SET_ORDER, 0);
+                        if( $match ) {
+                            $found = false;
+                            foreach( $matches as $k => $v ) {
+                                if( isset($data[$v[1]]) ) $found = true;
                             }
+                            if( !$found ) unset($woocommerce_checkout_products_meta[$k]);
                         }
-
                     } 
                     if( isset( $product[2] ) ) {
-                        if (preg_match("/{(.*?)}/", $product[2])) {
-                            $meta_value = trim($product[2], '{}');
-                            if( !isset($data[$meta_value]) ) {
-                                unset($woocommerce_checkout_products_meta[$k]);
+                        $match = preg_match_all($regex, $product[2], $matches, PREG_SET_ORDER, 0);
+                        if( $match ) {
+                            $found = false;
+                            foreach( $matches as $k => $v ) {
+                                if( isset($data[$v[1]]) ) $found = true;
                             }
+                            if( !$found ) unset($woocommerce_checkout_products_meta[$k]);
                         }
                     }
                     
