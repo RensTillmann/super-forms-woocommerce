@@ -1,3 +1,6 @@
+Apr 25, 2018 - Version 1.3.7
+- Added: Option to retrieve field labels for use as product meta on checkout e.g: {tag;label}
+
 Apr 19, 2018 - Version 1.3.6
 - Improved: More flexibility for dynamic product meta data checkouts: Save all custom product meta data but first match all possible {tags} and check for each individual tag if it existed as a field element, if at least one existed do not unset the custom product meta data
 

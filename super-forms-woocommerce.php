@@ -11,7 +11,7 @@
  * Plugin Name: Super Forms - WooCommerce Checkout
  * Plugin URI:  http://codecanyon.net/item/super-forms-drag-drop-form-builder/13979866
  * Description: Checkout with WooCommerce after form submission. Charge users for registering or posting content.
- * Version:     1.3.6
+ * Version:     1.3.7
  * Author:      feeling4design
  * Author URI:  http://codecanyon.net/user/feeling4design
 */
@@ -36,7 +36,7 @@ if(!class_exists('SUPER_WooCommerce')) :
          *
          *  @since      1.0.0
         */
-        public $version = '1.3.6';
+        public $version = '1.3.7';
 
 
         /**
@@ -809,9 +809,13 @@ if(!class_exists('SUPER_WooCommerce')) :
                 $woocommerce_checkout_products_meta = explode( "\n", $settings['woocommerce_checkout_products_meta'] );  
 
                 $meta = array();
-                foreach( $woocommerce_checkout_products_meta as $k => $v ) {
+                foreach( $woocommerce_checkout_products_meta as $wck => $v ) {
                     $product =  explode( "|", $v );
-                    
+                    if( count($product) < 2 ) {
+                        unset($woocommerce_checkout_products_meta[$wck]);
+                        continue;
+                    }
+
                     // @since 1.3.5 - do not add meta data to product if field was conditionally hidden or none existing (but only if {tag} was being used)
                     // @since 1.3.5 - match all possible tags and check for each individual tag if it existed, if at least one existed do not unset the custom meta from array
                     $regex = "/{(.*?)}/";
@@ -820,9 +824,10 @@ if(!class_exists('SUPER_WooCommerce')) :
                         if( $match ) {
                             $found = false;
                             foreach( $matches as $k => $v ) {
-                                if( isset($data[$v[1]]) ) $found = true;
+                                $key = str_replace(';label', '', $v[1]); // @since 1.3.7
+                                if( isset($data[$key]) ) $found = true;
                             }
-                            if( !$found ) unset($woocommerce_checkout_products_meta[$k]);
+                            if( !$found ) unset($woocommerce_checkout_products_meta[$wck]);
                         }
                     } 
                     if( isset( $product[1] ) ) {
@@ -830,9 +835,10 @@ if(!class_exists('SUPER_WooCommerce')) :
                         if( $match ) {
                             $found = false;
                             foreach( $matches as $k => $v ) {
-                                if( isset($data[$v[1]]) ) $found = true;
+                                $key = str_replace(';label', '', $v[1]); // @since 1.3.7
+                                if( isset($data[$key]) ) $found = true;
                             }
-                            if( !$found ) unset($woocommerce_checkout_products_meta[$k]);
+                            if( !$found ) unset($woocommerce_checkout_products_meta[$wck]);
                         }
                     } 
                     if( isset( $product[2] ) ) {
@@ -840,9 +846,12 @@ if(!class_exists('SUPER_WooCommerce')) :
                         if( $match ) {
                             $found = false;
                             foreach( $matches as $k => $v ) {
-                                if( isset($data[$v[1]]) ) $found = true;
+                                $key = str_replace(';label', '', $v[1]); // @since 1.3.7
+                                if( isset($data[$key]) ) {
+                                    $found = true;
+                                }
                             }
-                            if( !$found ) unset($woocommerce_checkout_products_meta[$k]);
+                            if( !$found ) unset($woocommerce_checkout_products_meta[$wck]);
                         }
                     }
                     
