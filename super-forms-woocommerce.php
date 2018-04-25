@@ -872,6 +872,7 @@ if(!class_exists('SUPER_WooCommerce')) :
                 foreach( $meta as $mk => $mv ) {
                     foreach( $mv as $k => $v ) {
                         $meta_data =  explode( "|", $v );
+                        if( count($meta_data) < 2 ) continue;
                         $product_id = 0;
                         $meta_key = '';
                         $meta_value = '';
