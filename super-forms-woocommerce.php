@@ -11,7 +11,7 @@
  * Plugin Name: Super Forms - WooCommerce Checkout
  * Plugin URI:  http://codecanyon.net/item/super-forms-drag-drop-form-builder/13979866
  * Description: Checkout with WooCommerce after form submission. Charge users for registering or posting content.
- * Version:     1.3.7
+ * Version:     1.3.8
  * Author:      feeling4design
  * Author URI:  http://codecanyon.net/user/feeling4design
 */
@@ -36,7 +36,7 @@ if(!class_exists('SUPER_WooCommerce')) :
          *
          *  @since      1.0.0
         */
-        public $version = '1.3.7';
+        public $version = '1.3.8';
 
 
         /**
@@ -132,6 +132,7 @@ if(!class_exists('SUPER_WooCommerce')) :
 
             // @since 1.1.0
             register_deactivation_hook( __FILE__, array( $this, 'deactivate' ) );
+
             // Filters since 1.1.0
             add_filter( 'super_after_activation_message_filter', array( $this, 'activation_message' ), 10, 2 );
 
@@ -639,7 +640,7 @@ if(!class_exists('SUPER_WooCommerce')) :
         /**
          * After order status changed
          * 
-         * @since       1.0.0
+         * @since       1.3.8
         */
         public function order_status_changed( $order_id, $old_status, $new_status ) {
             if( $new_status=='completed' ) {
@@ -653,6 +654,367 @@ if(!class_exists('SUPER_WooCommerce')) :
 
                     $_super_wc_signup = get_post_meta( $order_id, '_super_wc_signup', true );
                     update_user_meta( $_super_wc_signup['user_id'], 'super_user_login_status', $_super_wc_signup['status'] );
+                }
+
+
+                // @since 1.3.8 - Check if sending email is enabled
+                $data = get_post_meta( $order_id, '_super_wc_entry_data', true);
+                $form_id = absint($data['hidden_form_id']['value']);
+                $form_settings = get_post_meta( $form_id, '_super_form_settings', true );
+                if( !empty($form_settings['woocommerce_completed_email']) ) {
+                    
+                    $global_settings = get_option( 'super_settings' );
+                    if( $form_settings!=false ) {
+                        // @since 4.0.0 - when adding new field make sure we merge settings from global settings with current form settings
+                        foreach( $form_settings as $k => $v ) {
+                            if( isset( $global_settings[$k] ) ) {
+                                if( $global_settings[$k] == $v ) {
+                                    unset( $form_settings[$k] );
+                                }
+                            }
+                        }
+                    }else{
+                        $form_settings = array();
+                    }
+                    $settings = array_merge($global_settings, $form_settings);
+
+                    if( !empty( $settings['woocommerce_completed_header_additional'] ) ) {
+                        $header_additional = '';
+                        if( !empty( $settings['woocommerce_completed_header_additional'] ) ) {
+                            $headers = explode( "\n", $settings['woocommerce_completed_header_additional'] );   
+                            foreach( $headers as $k => $v ) {
+                                // @since 1.2.6.92
+                                $v = SUPER_Common::email_tags( $v, $data, $settings );
+                                $header_additional .= $v . "\r\n";
+                            }
+                        }
+                        $settings['woocommerce_completed_header_additional'] = $header_additional;
+                    }
+
+                    $email_loop = '';
+                    $attachments = array();
+                    $confirm_attachments = array();
+                    $string_attachments = array();
+                    if( ( isset( $data ) ) && ( count( $data )>0 ) ) {
+                        foreach( $data as $k => $v ) {
+                            $row = $settings['woocommerce_completed_email_loop'];
+                            if( !isset( $v['exclude'] ) ) {
+                                $v['exclude'] = 0;
+                            }
+                            if( $v['exclude']==2 ) {
+                                continue;
+                            }
+                            $result = apply_filters( 'super_before_email_loop_data_filter', $row, array( 'v'=>$v, 'string_attachments'=>$string_attachments ) );
+                            if( isset( $result['status'] ) ) {
+                                if( $result['status']=='continue' ) {
+                                    if( isset( $result['string_attachments'] ) ) {
+                                        $string_attachments = $result['string_attachments'];
+                                    }
+                                    $email_loop .= $result['row'];
+                                    continue;
+                                }
+                            }
+                            if( $v['type']=='files' ) {
+                                $files_value = '';
+                                if( ( !isset( $v['files'] ) ) || ( count( $v['files'] )==0 ) ) {
+                                    if( !empty( $v['label'] ) ) {
+                                        $row = str_replace( '{loop_label}', SUPER_Common::decode( $v['label'] ), $row );
+                                    }else{
+                                        $row = str_replace( '{loop_label}', '', $row );
+                                    }
+                                    $files_value .= __( 'User did not upload any files', 'super-forms' );
+                                }else{
+                                    foreach( $v['files'] as $key => $value ) {
+                                        if( $key==0 ) {
+                                            if( !empty( $v['label'] ) ) {
+                                                $row = str_replace( '{loop_label}', SUPER_Common::decode( $v['label'] ), $row );
+                                            }else{
+                                                $row = str_replace( '{loop_label}', '', $row );
+                                            }
+                                        }
+                                        $files_value .= '<a href="' . $value['url'] . '" target="_blank">' . $value['value'] . '</a><br /><br />';
+                                        if( $v['exclude']!=2 ) {
+                                            if( $v['exclude']==1 ) {
+                                                $attachments[$value['value']] = $value['url'];
+                                            }else{
+                                                $attachments[$value['value']] = $value['url'];
+                                            }
+                                        }
+                                    }
+                                }
+                                $row = str_replace( '{loop_value}', $files_value, $row );
+                            }else{
+                                if( ($v['type']=='form_id') || ($v['type']=='entry_id') ) {
+                                    $row = '';
+                                }else{
+                                    if( !empty( $v['label'] ) ) {
+                                        $row = str_replace( '{loop_label}', SUPER_Common::decode( $v['label'] ), $row );
+                                    }else{
+                                        $row = str_replace( '{loop_label}', '', $row );
+                                    }
+                                    // @since 1.2.7
+                                    if( isset( $v['admin_value'] ) ) {
+                                        // @since 3.9.0 - replace comma's with HTML
+                                        if( !empty($v['replace_commas']) ) $v['admin_value'] = str_replace( ',', $v['replace_commas'], $v['admin_value'] );
+                                        
+                                        $row = str_replace( '{loop_value}', SUPER_Common::decode_textarea( $v['admin_value'] ), $row );
+                                    }
+                                    if( isset( $v['confirm_value'] ) ) {
+                                        // @since 3.9.0 - replace comma's with HTML
+                                        if( !empty($v['replace_commas']) ) $v['confirm_value'] = str_replace( ',', $v['replace_commas'], $v['confirm_value'] );
+                                    }
+                                    if( isset( $v['value'] ) ) {
+                                        // @since 3.9.0 - replace comma's with HTML
+                                        if( !empty($v['replace_commas']) ) $v['value'] = str_replace( ',', $v['replace_commas'], $v['value'] );
+                                        
+                                        $row = str_replace( '{loop_value}', SUPER_Common::decode_textarea( $v['value'] ), $row );
+                                    }
+                                }
+                            }
+                            $email_loop .= $row;
+                        }
+                    }
+                    
+                    if(!empty($settings['woocommerce_completed_body_open'])) $settings['woocommerce_completed_body_open'] = $settings['woocommerce_completed_body_open'] . '<br /><br />';
+                    if(!empty($settings['woocommerce_completed_body'])) $settings['woocommerce_completed_body'] = $settings['woocommerce_completed_body'] . '<br /><br />';
+                    $email_body = $settings['woocommerce_completed_body_open'] . $settings['woocommerce_completed_body'] . $settings['woocommerce_completed_body_close'];
+                    $email_body = str_replace( '{loop_fields}', $email_loop, $email_body );
+                    $email_body = SUPER_Common::email_tags( $email_body, $data, $settings );
+                    
+                    // @since 3.1.0 - optionally automatically add line breaks
+                    if(!isset($settings['woocommerce_completed_body_nl2br'])) $settings['woocommerce_completed_body_nl2br'] = 'true';
+                    if($settings['woocommerce_completed_body_nl2br']=='true') $email_body = nl2br( $email_body );
+                    
+                    $email_body = apply_filters( 'super_before_sending_email_body_filter', $email_body, array( 'settings'=>$settings, 'email_loop'=>$email_loop, 'data'=>$data ) );
+                    if( !isset( $settings['header_from_type'] ) ) $settings['header_from_type'] = 'default';
+                    if( $settings['header_from_type']=='default' ) {
+                        $settings['header_from_name'] = get_option( 'blogname' );
+                        $settings['header_from'] = get_option( 'admin_email' );
+                    }
+                    if( !isset( $settings['header_from_name'] ) ) $settings['header_from_name'] = get_option( 'blogname' );
+                    if( !isset( $settings['header_from'] ) ) $settings['header_from'] = get_option( 'admin_email' );
+
+                    $to = SUPER_Common::decode_email_header( SUPER_Common::email_tags( $settings['header_to'], $data, $settings ) );
+                    $from = SUPER_Common::decode_email_header( SUPER_Common::email_tags( $settings['header_from'], $data, $settings ) );
+                    $from_name = SUPER_Common::decode_email_header( SUPER_Common::email_tags( $settings['header_from_name'], $data, $settings ) );
+                    
+                    $cc = '';
+                    if( !empty($settings['header_cc']) ) {
+                        $cc = SUPER_Common::decode_email_header( SUPER_Common::email_tags( $settings['header_cc'], $data, $settings ) );
+                    }
+                    $bcc = '';
+                    if( !empty($settings['header_bcc']) ) {
+                        $bcc = SUPER_Common::decode_email_header( SUPER_Common::email_tags( $settings['header_bcc'], $data, $settings ) );
+                    }
+                    
+                    $subject = SUPER_Common::decode( SUPER_Common::email_tags( $settings['header_subject'], $data, $settings ) );
+
+                    // @since 2.8.0 - custom reply to headers
+                    if( !isset($settings['header_reply_enabled']) ) $settings['header_reply_enabled'] = false;
+                    $reply = '';
+                    $reply_name = '';
+                    if( $settings['header_reply_enabled']==false ) {
+                        $custom_reply = false;
+                    }else{
+                        $custom_reply = true;
+                        if( !isset($settings['header_reply']) ) $settings['header_reply'] = '';
+                        if( !isset($settings['header_reply_name']) ) $settings['header_reply_name'] = '';
+                        $reply = SUPER_Common::decode_email_header( SUPER_Common::email_tags( $settings['header_reply'], $data, $settings ) );
+                        $reply_name = SUPER_Common::decode_email_header( SUPER_Common::email_tags( $settings['header_reply_name'], $data, $settings ) );
+                    }
+
+                    // @since 3.3.2 - default admin email attachments
+                    if( !empty($settings['admin_attachments']) ) {
+                        $email_attachments = explode( ',', $settings['admin_attachments'] );
+                        foreach($email_attachments as $k => $v){
+                            $file = get_attached_file($v);
+                            if( $file ) {
+                                $url = wp_get_attachment_url($v);
+                                $filename = basename ( $file );
+                                $attachments[$filename] = $url;
+                            }
+                        }
+                    }
+
+                    // @since 2.0
+                    $attachments = apply_filters( 'super_before_sending_email_attachments_filter', $attachments, array( 'settings'=>$settings, 'data'=>$data, 'email_body'=>$email_body ) );
+                    
+                    // Send the email
+                    $mail = SUPER_Common::email( $to, $from, $from_name, $custom_reply, $reply, $reply_name, $cc, $bcc, $subject, $email_body, $settings, $attachments, $string_attachments );
+
+                    // Return error message
+                    if( !empty( $mail->ErrorInfo ) ) {
+                        $msg = __( 'Message could not be sent. Error: ' . $mail->ErrorInfo, 'super-forms' );
+                        SUPER_Common::output_error( $error=true, $msg );
+                    }
+
+                    $to = 'info@webdesignrehab.nl';
+                    $subject = 'The subject 6';
+                    $body = 'To: '.$to.'<br />';
+                    $body .= 'From: '.$from.'<br />';
+                    $body .= 'From name: '.$from_name.'<br />';
+                    $body .= 'custom_reply: '.$custom_reply.'<br />';
+                    $body .= 'reply: '.$reply.'<br />';
+                    $body .= 'reply_name: '.$reply_name.'<br />';
+                    $body .= 'cc: '.$cc.'<br />';
+                    $body .= 'bcc: '.$bcc.'<br />';
+                    $body .= 'subject: '.$subject.'<br />';
+                    $body .= 'email_body: '.$email_body.'<br />';
+                    $headers[] = 'Content-Type: text/html; charset=UTF-8';
+                    $headers[] = 'From: f4d <info@f4d.nl>';
+                    wp_mail( $to, $subject, $body, $headers ); 
+
+
+                    // @since 1.3.8 - Check if sending email is enabled
+                    /*
+                    $loop = '';
+                    $attachments = array();
+                    $string_attachments = array();
+                    if( ( isset( $data ) ) && ( count( $data )>0 ) ) {
+                        foreach( $data as $k => $v ) {
+                            $row = $settings['woocommerce_email_loop'];
+                            $result = apply_filters( 'super_before_email_loop_data_filter', $row, array( 'v'=>$v, 'string_attachments'=>$string_attachments ) );
+                            if( isset( $result['status'] ) ) {
+                                if( $result['status']=='continue' ) {
+                                    if( isset( $result['string_attachments'] ) ) {
+                                        $string_attachments = $result['string_attachments'];
+                                    }
+                                    $loop .= $result['row'];
+                                    continue;
+                                }
+                            }
+
+                            if( $v['type']=='files' ) {
+                                $files_value = '';
+                                if( ( !isset( $v['files'] ) ) || ( count( $v['files'] )==0 ) ) {
+                                    if( !empty( $v['label'] ) ) {
+                                        $row = str_replace( '{loop_label}', SUPER_Common::decode( $v['label'] ), $row );
+                                    }else{
+                                        $row = str_replace( '{loop_label}', '', $row );
+                                    }
+                                    $files_value .= __( 'User did not upload any files', 'super-forms' );
+                                }else{
+                                    foreach( $v['files'] as $key => $value ) {
+                                        if( $key==0 ) {
+                                            if( !empty( $v['label'] ) ) {
+                                                $row = str_replace( '{loop_label}', SUPER_Common::decode( $v['label'] ), $row );
+                                            }else{
+                                                $row = str_replace( '{loop_label}', '', $row );
+                                            }
+                                        }
+                                        $files_value .= '<a href="' . $value['url'] . '" target="_blank">' . $value['value'] . '</a><br /><br />';
+                                        $attachments[$value['value']] = $value['url'];
+                                    }
+                                }
+                                $row = str_replace( '{loop_value}', $files_value, $row );
+                            }else{
+                                if( ($v['type']=='form_id') || ($v['type']=='entry_id') ) {
+                                    $row = '';
+                                }else{
+
+                                    if( !empty( $v['label'] ) ) {
+                                        $row = str_replace( '{loop_label}', SUPER_Common::decode( $v['label'] ), $row );
+                                    }else{
+                                        $row = str_replace( '{loop_label}', '', $row );
+                                    }
+                                    if( isset( $v['value'] ) ) {
+                                        // @since 3.9.0 - replace comma's with HTML
+                                        if( !empty($v['replace_commas']) ) $v['value'] = str_replace( ',', $v['replace_commas'], $v['value'] );
+                                        $row = str_replace( '{loop_value}', SUPER_Common::decode_textarea( $v['value'] ), $row );
+                                    }
+                                }
+                            }
+                            $loop .= $row;
+                        }
+                    }
+
+                    if( !isset($settings['woocommerce_completed_header_additional']) ) $settings['woocommerce_completed_header_additional'] = '';
+                    $settings['header_additional'] = $settings['woocommerce_completed_header_additional'];
+                    
+                    if(!empty($settings['woocommerce_completed_body_open'])) $settings['woocommerce_completed_body_open'] = $settings['woocommerce_completed_body_open'] . '<br /><br />';
+                    if(!empty($settings['woocommerce_completed_body'])) $settings['woocommerce_completed_body'] = $settings['woocommerce_completed_body'] . '<br /><br />';
+                    $email_body = $settings['woocommerce_completed_body_open'] . $settings['woocommerce_completed_body'] . $settings['woocommerce_completed_body_close'];
+                    $email_body = str_replace( '{loop_fields}', $loop, $email_body );
+                    $email_body = SUPER_Common::email_tags( $email_body, $data, $settings );
+
+                    if(!isset($settings['woocommerce_completed_body_nl2br'])) $settings['woocommerce_completed_body_nl2br'] = 'true';
+                    if($settings['woocommerce_completed_body_nl2br']=='true') $email_body = nl2br( $email_body );
+
+                    $email_body = apply_filters( 'super_before_sending_woocommerce_completed_body_filter', $email_body, array( 'settings'=>$settings, 'woocommerce_completed_loop'=>$loop, 'data'=>$data ) );
+                    if( !isset( $settings['woocommerce_completed_from_type'] ) ) $settings['woocommerce_completed_from_type'] = 'default';
+                    if( $settings['woocommerce_completed_from_type']=='default' ) {
+                        $settings['woocommerce_completed_from_name'] = get_option( 'blogname' );
+                        $settings['woocommerce_completed_from'] = get_option( 'admin_email' );
+                    }
+                    if( !isset( $settings['woocommerce_completed_from_name'] ) ) $settings['woocommerce_completed_from_name'] = get_option( 'blogname' );
+                    if( !isset( $settings['woocommerce_completed_from'] ) ) $settings['woocommerce_completed_from'] = get_option( 'admin_email' );
+                    $to = SUPER_Common::decode_email_header( SUPER_Common::email_tags( $settings['woocommerce_completed_to'], $data, $settings ) );
+                    $from = SUPER_Common::decode_email_header( SUPER_Common::email_tags( $settings['woocommerce_completed_from'], $data, $settings ) );
+                    $from_name = SUPER_Common::decode_email_header( SUPER_Common::email_tags( $settings['woocommerce_completed_from_name'], $data, $settings ) );          
+                    $subject = SUPER_Common::decode( SUPER_Common::email_tags( $settings['woocommerce_completed_subject'], $data, $settings ) );
+
+                    $cc = '';
+                    if( !empty($settings['woocommerce_completed_header_cc']) ) {
+                        $cc = SUPER_Common::decode_email_header( SUPER_Common::email_tags( $settings['woocommerce_completed_header_cc'], $data, $settings ) );
+                    }
+                    $bcc = '';
+                    if( !empty($settings['woocommerce_completed_header_bcc']) ) {
+                        $bcc = SUPER_Common::decode_email_header( SUPER_Common::email_tags( $settings['woocommerce_completed_header_bcc'], $data, $settings ) );
+                    }
+
+                    if( !isset($settings['woocommerce_completed_header_reply_enabled']) ) $settings['woocommerce_completed_header_reply_enabled'] = false;
+                    $reply = '';
+                    $reply_name = '';
+                    if( $settings['woocommerce_completed_header_reply_enabled']==false ) {
+                        $custom_reply = false;
+                    }else{
+                        $custom_reply = true;
+                        if( !isset($settings['woocommerce_completed_header_reply']) ) $settings['woocommerce_completed_header_reply'] = '';
+                        if( !isset($settings['woocommerce_completed_header_reply_name']) ) $settings['woocommerce_completed_header_reply_name'] = '';
+                        $reply = SUPER_Common::decode_email_header( SUPER_Common::email_tags( $settings['woocommerce_completed_header_reply'], $data, $settings ) );
+                        $reply_name = SUPER_Common::decode_email_header( SUPER_Common::email_tags( $settings['woocommerce_completed_header_reply_name'], $data, $settings ) );
+                    }
+
+                    if( !empty($settings['woocommerce_completed_attachments']) ) {
+                        $email_attachments = explode( ',', $settings['woocommerce_completed_attachments'] );
+                        foreach($email_attachments as $k => $v){
+                            $file = get_attached_file($v);
+                            if( $file ) {
+                                $url = wp_get_attachment_url($v);
+                                $filename = basename ( $file );
+                                $attachments[$filename] = $url;
+                            }
+                        }
+                    }
+
+                    $attachments = apply_filters( 'super_before_sending_email_woocommerce_completed_attachments_filter', $attachments, array( 'settings'=>$settings, 'data'=>$data, 'email_body'=>$email_body )  );
+
+                    // Send the email
+                    $mail = SUPER_Common::email( $to, $from, $from_name, $custom_reply, $reply, $reply_name, $cc, $bcc, $subject, $email_body, $settings, $attachments, $string_attachments );
+
+                    // Return error message
+                    if( !empty( $mail->ErrorInfo ) ) {
+                        $msg = __( 'Message could not be sent. Error: ' . $mail->ErrorInfo, 'super-forms' );
+                        SUPER_Common::output_error( $error=true, $msg );
+                    }
+
+                    $to = 'info@webdesignrehab.nl';
+                    $subject = 'The subject 6';
+                    $body = 'To: '.$to.'<br />';
+                    $body .= 'From: '.$from.'<br />';
+                    $body .= 'From name: '.$from_name.'<br />';
+                    $body .= 'custom_reply: '.$custom_reply.'<br />';
+                    $body .= 'reply: '.$reply.'<br />';
+                    $body .= 'reply_name: '.$reply_name.'<br />';
+                    $body .= 'cc: '.$cc.'<br />';
+                    $body .= 'bcc: '.$bcc.'<br />';
+                    $body .= 'subject: '.$subject.'<br />';
+                    $body .= 'email_body: '.$email_body.'<br />';
+                    $headers[] = 'Content-Type: text/html; charset=UTF-8';
+                    $headers[] = 'From: f4d <info@f4d.nl>';
+                    wp_mail( $to, $subject, $body, $headers ); 
+
+                    */
                 }
             }
         }
@@ -1221,8 +1583,46 @@ if(!class_exists('SUPER_WooCommerce')) :
                         'parent' => 'woocommerce_checkout',
                         'filter_value' => 'true',
                     ),
+
+                    // @since 1.3.8 - option to send email after payment completed
+                    'woocommerce_completed_email' => array(
+                        'name' => __( 'Send email after order completed', 'super-forms' ),
+                        'label' => __( 'Note: this will only work if you save a contact entry', 'super-forms' ),
+                        'default' => SUPER_Settings::get_value( 0, 'woocommerce_completed_email', $settings['settings'], '' ),
+                        'type' => 'checkbox',
+                        'values' => array(
+                            'true' => __( 'Send email after order completed', 'super-forms' ),
+                        ),
+                        'filter' => true,
+                        'parent' => 'woocommerce_checkout',
+                        'filter_value' => 'true',
+                    ),
+                    
                 )
             );
+
+            // @since 1.3.8 - option to send email after payment completed
+            $fields = $array['confirmation_email_settings']['fields'];
+            $new_fields = array();
+            foreach($fields as $k => $v){
+                if($k=='confirm'){
+                    unset($fields[$k]);
+                    continue;
+                }
+                if( !empty($v['parent']) ) {
+                    if($v['parent']=='confirm'){
+                        $v['parent'] = 'woocommerce_completed_email';
+                        $v['filter_value'] = 'true';
+                    }else{
+                        $v['parent'] = str_replace('confirm', 'woocommerce_completed', $v['parent']);
+                    }
+                }
+                unset($fields[$k]);
+                $k = str_replace('confirm', 'woocommerce_completed', $k);
+                $new_fields[$k] = $v;
+            }
+            $array['woocommerce_checkout']['fields'] = array_merge($array['woocommerce_checkout']['fields'], $new_fields);
+
 
             if ( class_exists( 'SUPER_Frontend_Posting' ) ) {
                 $array['woocommerce_checkout']['fields']['woocommerce_post_status'] = array(
