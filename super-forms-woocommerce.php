@@ -11,7 +11,7 @@
  * Plugin Name: Super Forms - WooCommerce Checkout
  * Plugin URI:  http://codecanyon.net/item/super-forms-drag-drop-form-builder/13979866
  * Description: Checkout with WooCommerce after form submission. Charge users for registering or posting content.
- * Version:     1.3.8
+ * Version:     1.3.9
  * Author:      feeling4design
  * Author URI:  http://codecanyon.net/user/feeling4design
 */
@@ -36,7 +36,7 @@ if(!class_exists('SUPER_WooCommerce')) :
          *
          *  @since      1.0.0
         */
-        public $version = '1.3.8';
+        public $version = '1.3.9';
 
 
         /**
@@ -854,49 +854,6 @@ if(!class_exists('SUPER_WooCommerce')) :
 
 
         /**
-         * Loop through {tags} for custom product meta data in case dynamic column is used
-         *
-         *  @since      1.3.4
-        */
-        public static function new_wc_checkout_products_meta( $products_tags_meta, $i, $looped, $product, $id, $meta_key, $meta_value ){
-            if( !in_array($i, $looped) ) {
-                $new_line = '';
-
-                // Get the product ID tag
-                if( $product[0][0]=='{' ) { 
-                    $new_line .= '{' . $id . '_' . $i . '}'; 
-                }else{ 
-                    $new_line .= $product[0]; 
-                }
-
-                // Get the meta key tag
-                if( $product[1][0]=='{' ) { 
-                    $new_line .= '|{' . $meta_key . '_' . $i . '}'; 
-                }else{ 
-                    if(!empty($product[1])) $new_line .= '|' . $product[1]; 
-                }
-
-                // Get the meta value tag
-                if( $product[2][0]=='{' ) { 
-                    $new_line .= '|{' . $meta_value . '_' . $i . '}'; 
-                }else{ 
-                    if(!empty($product[2])) $new_line .= '|' . $product[2]; 
-                }
-
-                $looped[$i] = $i;
-                $i++;
-                return array(
-                    'i'=>$i, 
-                    'looped'=>$looped, 
-                    'products_tags_meta'=>$new_line 
-                );
-            }else{
-                return false;
-            }
-        }
-
-
-        /**
          * Loop through {tags} if dynamic column is used
          *
          *  @since      1.3.4
@@ -1002,80 +959,123 @@ if(!class_exists('SUPER_WooCommerce')) :
                 }
 
                 $woocommerce_checkout_products_meta = explode( "\n", $settings['woocommerce_checkout_products_meta'] );  
-
+                $values = array();
                 $meta = array();
+                $regex = "/{(.*?)}/";
                 foreach( $woocommerce_checkout_products_meta as $wck => $v ) {
                     $product =  explode( "|", $v );
-                    if( count($product) < 2 ) {
-                        unset($woocommerce_checkout_products_meta[$wck]);
+
+                    // Skip if not enough values where found, we must have ID|Label|Value (a total of 3 values)
+                    if( count($product) < 3 ) {
                         continue;
                     }
 
-                    // @since 1.3.5 - do not add meta data to product if field was conditionally hidden or none existing (but only if {tag} was being used)
-                    // @since 1.3.5 - match all possible tags and check for each individual tag if it existed, if at least one existed do not unset the custom meta from array
-                    $regex = "/{(.*?)}/";
+                    $found = false; // In case we found this tag in the submitted data
+
+                    // Check if Product ID was set via a {tag} e.g: {tshirt_id}
                     if( isset( $product[0] ) ) {
+                        $values[0]['value'] = $product[0];
                         $match = preg_match_all($regex, $product[0], $matches, PREG_SET_ORDER, 0);
                         if( $match ) {
-                            $found = false;
-                            foreach( $matches as $k => $v ) {
-                                $key = str_replace(';label', '', $v[1]); // @since 1.3.7
-                                if( isset($data[$key]) ) $found = true;
-                            }
-                            if( !$found ) unset($woocommerce_checkout_products_meta[$wck]);
-                        }
-                    } 
-                    if( isset( $product[1] ) ) {
-                        $match = preg_match_all($regex, $product[1], $matches, PREG_SET_ORDER, 0);
-                        if( $match ) {
-                            $found = false;
-                            foreach( $matches as $k => $v ) {
-                                $key = str_replace(';label', '', $v[1]); // @since 1.3.7
-                                if( isset($data[$key]) ) $found = true;
-                            }
-                            if( !$found ) unset($woocommerce_checkout_products_meta[$wck]);
-                        }
-                    } 
-                    if( isset( $product[2] ) ) {
-                        $match = preg_match_all($regex, $product[2], $matches, PREG_SET_ORDER, 0);
-                        if( $match ) {
-                            $found = false;
+                            $values[0]['value'] = trim($values[0]['value'], '{}');
+                            $values[0]['match'] = true;
                             foreach( $matches as $k => $v ) {
                                 $key = str_replace(';label', '', $v[1]); // @since 1.3.7
                                 if( isset($data[$key]) ) {
                                     $found = true;
                                 }
                             }
-                            if( !$found ) unset($woocommerce_checkout_products_meta[$wck]);
                         }
                     }
-                    
-                    $meta[$id] = $woocommerce_checkout_products_meta;
-                    $looped = array();
-                    $i=2;
-                    while( isset( $data[$id . '_' . ($i)]) ) {
-                        $products_tags_meta = $woocommerce_checkout_products_meta;
-                        $array = self::new_wc_checkout_products_meta( $products_tags_meta, $i, $looped, $product, $id, $meta_key, $meta_value );
-                        if($array==false) break;
-                        $i = $array['i'];
-                        $looped = $array['looped'];
-                        $meta[$id . '_' . ($i-1)][] = $array['products_tags_meta'];
+
+                    // Check if meta Label was set via a {tag} e.g: {tshirt_meta_label}
+                    if( isset( $product[1] ) ) {
+                        $values[1]['value'] = $product[1];
+                        $match = preg_match_all($regex, $product[1], $matches, PREG_SET_ORDER, 0);
+                        if( $match ) {
+                            $values[1]['value'] = trim($values[1]['value'], '{}');
+                            $values[1]['match'] = true;
+                            foreach( $matches as $k => $v ) {
+                                $key = str_replace(';label', '', $v[1]); // @since 1.3.7
+                                if( isset($data[$key]) ) {
+                                    $found = true;
+                                }
+                            }
+                        }
+                    } 
+                  
+                    // Check if meta Value was set via a {tag} e.g: {tshirt_color}
+                    if( isset( $product[2] ) ) {
+                        $values[2]['value'] = $product[2];
+                        $match = preg_match_all($regex, $product[2], $matches, PREG_SET_ORDER, 0);
+                        if( $match ) {
+                            $values[2]['value'] = trim($values[2]['value'], '{}');
+                            $values[2]['match'] = true;
+                            foreach( $matches as $k => $v ) {
+                                $key = str_replace(';label', '', $v[1]); // @since 1.3.7
+                                if( isset($data[$key]) ) {
+                                    $found = true;
+                                }
+                            }
+                        }
+                    }
+
+                    // Let's first add the current meta lin to the new array
+                    $meta[] = $product;
+
+                    // We found a {tag} and it existed in the form data
+                    if( $found ) {
+
+                        $i=2;
+
+                        // Check if any of the matches exists in a dynamic column and are inside the submitted data
+                        $stop_loop = false;
+                        while( !$stop_loop ) {
+                            if( ( (isset($data[$values[0]['value'] . '_' . ($i)])) && ($values[0]['match']) ) || 
+                                ( (isset($data[$values[1]['value'] . '_' . ($i)])) && ($values[1]['match']) ) || 
+                                ( (isset($data[$values[2]['value'] . '_' . ($i)])) && ($values[2]['match']) ) ) {
+
+                                // Check if ID is {tag}
+                                $new_line = array();
+                                if($values[0]['match']){
+                                    $new_line[] = '{' . $values[0]['value'] . '_' . $i . '}'; 
+                                }else{
+                                    $new_line[] = $values[0]['value']; 
+                                }
+
+                                // Check if Label is {tag}
+                                if($values[1]['match']){
+                                    // The label must be unique compared to other labels so we have to add (2) behind it
+                                    $new_line[] = '{' . $values[1]['value'] . '_' . $i . '}' . ' ('.$i.')';
+                                }else{
+                                    // The label must be unique compared to other labels so we have to add (2) behind it
+                                    $new_line[] = $values[1]['value'] . ' ('.$i.')';
+                                }
+
+                                // Check if Value is {tag}
+                                if($values[2]['match']){
+                                    $new_line[] = '{' . $values[2]['value'] . '_' . $i . '}'; 
+                                }else{
+                                    $new_line[] = $values[2]['value']; 
+                                }
+                                $meta[] = $new_line;
+                                $i++;
+                            }else{
+                                $stop_loop = true;
+                            }
+                        }
                     }
                 }
 
                 $products_meta = array();
                 foreach( $meta as $mk => $mv ) {
-                    foreach( $mv as $k => $v ) {
-                        $meta_data =  explode( "|", $v );
-                        if( count($meta_data) < 2 ) continue;
-                        $product_id = 0;
-                        $meta_key = '';
-                        $meta_value = '';
-                        if( isset( $meta_data[0] ) ) $product_id = SUPER_Common::email_tags( $meta_data[0], $data, $settings );
-                        if( isset( $meta_data[1] ) ) $meta_key = SUPER_Common::email_tags( $meta_data[1], $data, $settings );
-                        if( isset( $meta_data[2] ) ) $meta_value = SUPER_Common::email_tags( $meta_data[2], $data, $settings );
-                        $products_meta[$mk][$meta_key] = $meta_value;
-                    }
+                    $product_id = 0;
+                    $meta_key = '';
+                    $meta_value = '';
+                    if( isset( $mv[0] ) ) $product_id = SUPER_Common::email_tags( $mv[0], $data, $settings );
+                    if( isset( $mv[1] ) ) $meta_key = SUPER_Common::email_tags( $mv[1], $data, $settings );
+                    if( isset( $mv[2] ) ) $meta_value = SUPER_Common::email_tags( $mv[2], $data, $settings );
+                    $products_meta[$product_id][$meta_key] = $meta_value;
                 }
 
                 $products = array();
@@ -1093,9 +1093,8 @@ if(!class_exists('SUPER_WooCommerce')) :
                     if( $product_quantity>0 ) {
                         $product_id = absint($product_id);
                         $meta = array();
-                        $field_name = trim($product[0], '{}');
-                        if( isset($products_meta[$field_name]) ) {
-                            $meta = $products_meta[$field_name];
+                        if( isset($products_meta[$product_id]) ) {
+                            $meta = $products_meta[$product_id];
                         }
                         $products[] = array(
                             'id' => $product_id,
