@@ -698,6 +698,7 @@ if(!class_exists('SUPER_WooCommerce')) :
                     if( ( isset( $data ) ) && ( count( $data )>0 ) ) {
                         foreach( $data as $k => $v ) {
                             $row = $settings['woocommerce_completed_email_loop'];
+
                             if( !isset( $v['exclude'] ) ) {
                                 $v['exclude'] = 0;
                             }
@@ -780,52 +781,52 @@ if(!class_exists('SUPER_WooCommerce')) :
                     $email_body = $settings['woocommerce_completed_body_open'] . $settings['woocommerce_completed_body'] . $settings['woocommerce_completed_body_close'];
                     $email_body = str_replace( '{loop_fields}', $email_loop, $email_body );
                     $email_body = SUPER_Common::email_tags( $email_body, $data, $settings );
-                    
+                
                     // @since 3.1.0 - optionally automatically add line breaks
                     if(!isset($settings['woocommerce_completed_body_nl2br'])) $settings['woocommerce_completed_body_nl2br'] = 'true';
                     if($settings['woocommerce_completed_body_nl2br']=='true') $email_body = nl2br( $email_body );
                     
                     $email_body = apply_filters( 'super_before_sending_email_body_filter', $email_body, array( 'settings'=>$settings, 'email_loop'=>$email_loop, 'data'=>$data ) );
-                    if( !isset( $settings['header_from_type'] ) ) $settings['header_from_type'] = 'default';
-                    if( $settings['header_from_type']=='default' ) {
-                        $settings['header_from_name'] = get_option( 'blogname' );
-                        $settings['header_from'] = get_option( 'admin_email' );
+                    if( !isset( $settings['woocommerce_completed_from_type'] ) ) $settings['woocommerce_completed_from_type'] = 'default';
+                    if( $settings['woocommerce_completed_from_type']=='default' ) {
+                        $settings['woocommerce_completed_from_name'] = get_option( 'blogname' );
+                        $settings['woocommerce_completed_from'] = get_option( 'admin_email' );
                     }
-                    if( !isset( $settings['header_from_name'] ) ) $settings['header_from_name'] = get_option( 'blogname' );
-                    if( !isset( $settings['header_from'] ) ) $settings['header_from'] = get_option( 'admin_email' );
+                    if( !isset( $settings['woocommerce_completed_from_name'] ) ) $settings['woocommerce_completed_from_name'] = get_option( 'blogname' );
+                    if( !isset( $settings['woocommerce_completed_from'] ) ) $settings['woocommerce_completed_from'] = get_option( 'admin_email' );
 
-                    $to = SUPER_Common::decode_email_header( SUPER_Common::email_tags( $settings['header_to'], $data, $settings ) );
-                    $from = SUPER_Common::decode_email_header( SUPER_Common::email_tags( $settings['header_from'], $data, $settings ) );
-                    $from_name = SUPER_Common::decode_email_header( SUPER_Common::email_tags( $settings['header_from_name'], $data, $settings ) );
+                    $to = SUPER_Common::decode_email_header( SUPER_Common::email_tags( $settings['woocommerce_completed_to'], $data, $settings ) );
+                    $from = SUPER_Common::decode_email_header( SUPER_Common::email_tags( $settings['woocommerce_completed_from'], $data, $settings ) );
+                    $from_name = SUPER_Common::decode_email_header( SUPER_Common::email_tags( $settings['woocommerce_completed_from_name'], $data, $settings ) );
                     
                     $cc = '';
-                    if( !empty($settings['header_cc']) ) {
-                        $cc = SUPER_Common::decode_email_header( SUPER_Common::email_tags( $settings['header_cc'], $data, $settings ) );
+                    if( !empty($settings['woocommerce_completed_header_cc']) ) {
+                        $cc = SUPER_Common::decode_email_header( SUPER_Common::email_tags( $settings['woocommerce_completed_header_cc'], $data, $settings ) );
                     }
                     $bcc = '';
-                    if( !empty($settings['header_bcc']) ) {
-                        $bcc = SUPER_Common::decode_email_header( SUPER_Common::email_tags( $settings['header_bcc'], $data, $settings ) );
+                    if( !empty($settings['woocommerce_completed_header_bcc']) ) {
+                        $bcc = SUPER_Common::decode_email_header( SUPER_Common::email_tags( $settings['woocommerce_completed_header_bcc'], $data, $settings ) );
                     }
                     
-                    $subject = SUPER_Common::decode( SUPER_Common::email_tags( $settings['header_subject'], $data, $settings ) );
+                    $subject = SUPER_Common::decode( SUPER_Common::email_tags( $settings['woocommerce_completed_subject'], $data, $settings ) );
 
                     // @since 2.8.0 - custom reply to headers
-                    if( !isset($settings['header_reply_enabled']) ) $settings['header_reply_enabled'] = false;
+                    if( !isset($settings['woocommerce_completed_header_reply_enabled']) ) $settings['woocommerce_completed_header_reply_enabled'] = false;
                     $reply = '';
                     $reply_name = '';
-                    if( $settings['header_reply_enabled']==false ) {
+                    if( $settings['woocommerce_completed_header_reply_enabled']==false ) {
                         $custom_reply = false;
                     }else{
                         $custom_reply = true;
-                        if( !isset($settings['header_reply']) ) $settings['header_reply'] = '';
-                        if( !isset($settings['header_reply_name']) ) $settings['header_reply_name'] = '';
-                        $reply = SUPER_Common::decode_email_header( SUPER_Common::email_tags( $settings['header_reply'], $data, $settings ) );
-                        $reply_name = SUPER_Common::decode_email_header( SUPER_Common::email_tags( $settings['header_reply_name'], $data, $settings ) );
+                        if( !isset($settings['woocommerce_completed_header_reply']) ) $settings['woocommerce_completed_header_reply'] = '';
+                        if( !isset($settings['woocommerce_completed_header_reply_name']) ) $settings['woocommerce_completed_header_reply_name'] = '';
+                        $reply = SUPER_Common::decode_email_header( SUPER_Common::email_tags( $settings['woocommerce_completed_header_reply'], $data, $settings ) );
+                        $reply_name = SUPER_Common::decode_email_header( SUPER_Common::email_tags( $settings['woocommerce_completed_header_reply_name'], $data, $settings ) );
                     }
 
                     // @since 3.3.2 - default admin email attachments
-                    if( !empty($settings['admin_attachments']) ) {
-                        $email_attachments = explode( ',', $settings['admin_attachments'] );
+                    if( !empty($settings['woocommerce_completed_attachments']) ) {
+                        $email_attachments = explode( ',', $settings['woocommerce_completed_attachments'] );
                         foreach($email_attachments as $k => $v){
                             $file = get_attached_file($v);
                             if( $file ) {
@@ -841,12 +842,6 @@ if(!class_exists('SUPER_WooCommerce')) :
                     
                     // Send the email
                     $mail = SUPER_Common::email( $to, $from, $from_name, $custom_reply, $reply, $reply_name, $cc, $bcc, $subject, $email_body, $settings, $attachments, $string_attachments );
-
-                    // Return error message
-                    if( !empty( $mail->ErrorInfo ) ) {
-                        $msg = __( 'Message could not be sent. Error: ' . $mail->ErrorInfo, 'super-forms' );
-                        SUPER_Common::output_error( $error=true, $msg );
-                    }
 
                 }
             }
@@ -1451,10 +1446,22 @@ if(!class_exists('SUPER_WooCommerce')) :
                 }
                 unset($fields[$k]);
                 $k = str_replace('confirm', 'woocommerce_completed', $k);
+                if( !empty($v['default']) ) {
+                    $v['default'] = SUPER_Settings::get_value( 0, $k, $settings['settings'], '' );
+                }
                 $new_fields[$k] = $v;
             }
             $array['woocommerce_checkout']['fields'] = array_merge($array['woocommerce_checkout']['fields'], $new_fields);
-
+            $array['woocommerce_checkout']['fields']['woocommerce_completed_attachments'] = array(
+                'name' => __( 'Attachments for woocommerce completed emails:', 'super-forms' ),
+                'desc' => __( 'Upload a file to send as attachment', 'super-forms' ),
+                'default' => SUPER_Settings::get_value( 0, 'woocommerce_completed_attachments', $settings['settings'], '' ),
+                'type' => 'file',
+                'multiple' => 'true',
+                'filter' => true,
+                'parent' => 'woocommerce_completed_email',
+                'filter_value' => 'true',
+            );
 
             if ( class_exists( 'SUPER_Frontend_Posting' ) ) {
                 $array['woocommerce_checkout']['fields']['woocommerce_post_status'] = array(
