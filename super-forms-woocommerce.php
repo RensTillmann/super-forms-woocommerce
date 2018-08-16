@@ -11,7 +11,7 @@
  * Plugin Name: Super Forms - WooCommerce Checkout
  * Plugin URI:  http://codecanyon.net/item/super-forms-drag-drop-form-builder/13979866
  * Description: Checkout with WooCommerce after form submission. Charge users for registering or posting content.
- * Version:     1.3.9
+ * Version:     1.4.0
  * Author:      feeling4design
  * Author URI:  http://codecanyon.net/user/feeling4design
 */
@@ -36,7 +36,7 @@ if(!class_exists('SUPER_WooCommerce')) :
          *
          *  @since      1.0.0
         */
-        public $version = '1.3.9';
+        public $version = '1.4.0';
 
 
         /**
@@ -229,13 +229,15 @@ if(!class_exists('SUPER_WooCommerce')) :
         */
         public function add_order_item_meta( $item_id, $values, $cart_item_key ) {
             global $woocommerce;
-            foreach ( $woocommerce->cart->get_cart() as $k => $v ) {
-                if( $k==$values->legacy_cart_item_key ) {
-                    foreach( $v['super_data'] as $k => $v ) {
-                        wc_add_order_item_meta( $item_id, $k, $v );
+            if($woocommerce->cart != null){
+                foreach ( $woocommerce->cart->get_cart() as $k => $v ) {
+                    if( $k==$values->legacy_cart_item_key ) {
+                        foreach( $v['super_data'] as $k => $v ) {
+                            wc_add_order_item_meta( $item_id, $k, $v );
+                        }
                     }
                 }
-            } 
+            }
         }
 
 
@@ -1253,7 +1255,7 @@ if(!class_exists('SUPER_WooCommerce')) :
                         $redirect = $woocommerce->cart->get_checkout_url();
                     }
                     if( $settings['woocommerce_redirect']=='cart' ) {
-                        $redirect = $woocommerce->cart->get_cart_url();
+                        $redirect = function_exists( 'wc_get_cart_url' ) ? wc_get_cart_url() : $woocommerce->cart->get_cart_url();
                     }
                     if( $redirect!=null ) {
                         SUPER_Common::output_error(
