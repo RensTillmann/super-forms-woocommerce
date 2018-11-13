@@ -11,7 +11,7 @@
  * Plugin Name: Super Forms - WooCommerce Checkout
  * Plugin URI:  http://codecanyon.net/item/super-forms-drag-drop-form-builder/13979866
  * Description: Checkout with WooCommerce after form submission. Charge users for registering or posting content.
- * Version:     1.4.0
+ * Version:     1.4.1
  * Author:      feeling4design
  * Author URI:  http://codecanyon.net/user/feeling4design
 */
@@ -36,7 +36,7 @@ if(!class_exists('SUPER_WooCommerce')) :
          *
          *  @since      1.0.0
         */
-        public $version = '1.4.0';
+        public $version = '1.4.1';
 
 
         /**
@@ -1012,6 +1012,8 @@ if(!class_exists('SUPER_WooCommerce')) :
                                 $key = str_replace(';label', '', $v[1]); // @since 1.3.7
                                 if( isset($data[$key]) ) {
                                     $found = true;
+                                }else{
+                                    $product[2] = '';
                                 }
                             }
                         }
@@ -1072,7 +1074,7 @@ if(!class_exists('SUPER_WooCommerce')) :
                     if( isset( $mv[0] ) ) $product_id = SUPER_Common::email_tags( $mv[0], $data, $settings );
                     if( isset( $mv[1] ) ) $meta_key = SUPER_Common::email_tags( $mv[1], $data, $settings );
                     if( isset( $mv[2] ) ) $meta_value = SUPER_Common::email_tags( $mv[2], $data, $settings );
-                    $products_meta[$product_id][$meta_key] = $meta_value;
+                    if(!empty($meta_value)) $products_meta[$product_id][$meta_key] = $meta_value;
                 }
 
                 $products = array();
@@ -1252,7 +1254,7 @@ if(!class_exists('SUPER_WooCommerce')) :
                     $woocommerce->session->set( '_super_form_data', $data ); // @since 1.2.0 - save data to session for billing fields
                     $redirect = null;
                     if( $settings['woocommerce_redirect']=='checkout' ) {
-                        $redirect = $woocommerce->cart->get_checkout_url();
+                        $redirect = wc_get_checkout_url();
                     }
                     if( $settings['woocommerce_redirect']=='cart' ) {
                         $redirect = function_exists( 'wc_get_cart_url' ) ? wc_get_cart_url() : $woocommerce->cart->get_cart_url();
